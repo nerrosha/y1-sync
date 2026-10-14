@@ -24,6 +24,25 @@ songs the player never lists, cut-off files that will not play, hundreds of mega
 of duplicates. **Y1 Sync** is a native Mac app (and a command-line tool) that syncs a
 library to the player and cleans up what is already there.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/sync.png" alt="Sync tab: what will be copied, album by album"></td>
+    <td width="50%"><img src="assets/screenshots/listening.png" alt="Listening tab: what you play, from the player's own log"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Sync</b> — see what will change, album by album, before anything is written</sub></td>
+    <td align="center"><sub><b>Listening</b> — what you really play, from the player's own log</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="assets/screenshots/device-fix.png" alt="Device tab: tidy, with renames that would be refused flagged in advance" width="50%"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><sub><b>Device → Fix</b> — tidy the card; problems are flagged before you press the button</sub></td>
+  </tr>
+</table>
+
 ## What it does
 
 **Sync**
