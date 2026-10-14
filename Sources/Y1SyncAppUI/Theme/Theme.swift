@@ -89,16 +89,12 @@ extension View {
 
 // MARK: - Fonts
 
-/// Pixelify Sans (SIL OFL, has Cyrillic) for everything that is chrome —
-/// titles, tabs, buttons, labels, numbers. Lists, paths and longer help text
-/// stay in the system font, which reads better at small sizes. If the font
-/// failed to register, `Font.custom` falls back to the system font.
 extension Font {
-    /// The pixel face only for headings and big numbers: at body sizes it is hard
-    /// to read, so smaller text (buttons, tabs, labels) uses the system font.
+    /// Chrome text (titles, tabs, buttons, numbers). The pixel face was hard to
+    /// read at any size, so this is the system font; the pixel look stays in the
+    /// borders and corners.
     static func pixel(_ size: CGFloat, bold: Bool = false) -> Font {
-        if size < 18 { return .system(size: size + 1, weight: bold ? .semibold : .medium) }
-        return .custom(bold ? "PixelifySans-SemiBold" : "PixelifySans-Regular", size: size, relativeTo: .body)
+        .system(size: size < 18 ? size + 1 : size, weight: bold ? .bold : .semibold)
     }
 }
 
