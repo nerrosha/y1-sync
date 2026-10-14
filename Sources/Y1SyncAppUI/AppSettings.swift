@@ -21,6 +21,7 @@ enum AppSettings {
         static let autoCompare = "compareWhenPlayerConnects"
         static let removeJunk = "tidyRemovesJunk"
         static let sounds = "soundsEnabled"
+        static let mergeRules = "mergeRules"
         static let playerMaxRate = "playerMaxSampleRate"
         static let playerMaxBits = "playerMaxBitDepth"
         static let playerAllowALAC = "playerAllowALAC"
@@ -50,6 +51,16 @@ enum AppSettings {
     static var playlistName: String {
         get { defaults.string(forKey: Key.playlistName) ?? "" }
         set { defaults.set(newValue, forKey: Key.playlistName) }
+    }
+
+    /// Merges the user made on the player, replayed on every sync.
+    static var mergeRules: [MergeRule] {
+        get {
+            guard let data = defaults.data(forKey: Key.mergeRules),
+                  let rules = try? JSONDecoder().decode([MergeRule].self, from: data) else { return [] }
+            return rules
+        }
+        set { defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.mergeRules) }
     }
 
     /// Formats the user found the player cannot play (nothing limited by default).

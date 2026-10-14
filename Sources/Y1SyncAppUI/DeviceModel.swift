@@ -27,7 +27,14 @@ final class DeviceModel {
 
     /// Library tracks, used to find an intact copy of a broken file. Set by
     /// the window from the Sync tab's scan; empty until the library is scanned.
-    var libraryTracks: [Track] = []
+    var libraryTracks: [Track] = [] { didSet { refreshSuggestedRules() } }
+    /// Differences between the library's spelling and the player's, offered as merge rules.
+    var suggestedRules: [MergeRule] = []
+
+    func refreshSuggestedRules() {
+        guard !tracks.isEmpty, !libraryTracks.isEmpty else { suggestedRules = []; return }
+        suggestedRules = MergeRules.learn(library: libraryTracks, device: tracks, existing: mergeRules)
+    }
     /// Result of the last health check; nil until one has run.
     var brokenFiles: [BrokenFile]?
     /// How the player's own song list compares with the card; nil when the
@@ -43,6 +50,10 @@ final class DeviceModel {
 
     var maxArtDimension = 500
     var removeJunk = AppSettings.removeJunk
+    /// Merges to repeat on every sync, so the library's old spellings do not come back.
+    var mergeRules = AppSettings.mergeRules {
+        didSet { AppSettings.mergeRules = mergeRules; refreshSuggestedRules() }
+    }
     /// Formats the user told the app the player cannot play.
     var limits = AppSettings.playerLimits {
         didSet { AppSettings.playerLimits = limits; brokenFiles = nil }
@@ -128,6 +139,7 @@ final class DeviceModel {
         playerList = PlayerLibraryCache.status(deviceRoot: root, deviceTracks: found)
         similarAlbums = SimilarAlbums().find(in: found)
         similarArtists = SimilarArtists().find(in: found)
+        refreshSuggestedRules()
 
         let dupes = await Task.detached(priority: .userInitiated) {
             Duplicates().find(in: found)
@@ -148,12 +160,15 @@ final class DeviceModel {
         busy = .tidying
         status = "Merging into “\(title)”…"
         let tracks = group.variants.flatMap(\.tracks)
-        let outcome = await Task.detached(priority: .userInitiated) { () -> (AlbumRetagger.Outcome, [Track]) in
+        let outcome = await Task.detached(priority: .userInitiated) { () -> (AlbumRetagger.Outcome, [Track], UUID) in
             let undo = UndoRecorder(deviceRoot: root)
             let out = AlbumRetagger.setAlbum(title, for: tracks, deviceRoot: root, undo: undo)
             undo.finish(label: "merge albums")
-            return (out, tracks)
+            return (out, tracks, undo.sessionID)
         }.value
+        if outcome.0.changed > 0 {
+            mergeRules = MergeRules.adding(MergeRules.albumRules(from: group, into: title, session: outcome.2), to: mergeRules)
+        }
         busy = .idle
 
         var text = "\(countLabel(outcome.0.changed, "file")) now in “\(title)”."
@@ -175,12 +190,15 @@ final class DeviceModel {
         busy = .tidying
         status = "Merging into “\(name)”…"
         let tracks = group.variants.flatMap(\.tracks)
-        let out = await Task.detached(priority: .userInitiated) { () -> TagEditor.Outcome in
+        let (out, session) = await Task.detached(priority: .userInitiated) { () -> (TagEditor.Outcome, UUID) in
             let undo = UndoRecorder(deviceRoot: root)
             let r = ArtistRetagger.setAlbumArtist(name, for: tracks, deviceRoot: root, undo: undo)
             undo.finish(label: "merge artists")
-            return r
+            return (r, undo.sessionID)
         }.value
+        if out.changed > 0 {
+            mergeRules = MergeRules.adding(MergeRules.artistRules(from: group, into: name, session: session), to: mergeRules)
+        }
         busy = .idle
 
         var text = "\(countLabel(out.changed, "file")) now under “\(name)”."
@@ -313,7 +331,10 @@ final class DeviceModel {
     /// permanently discards whatever this would have restored.
     func undoLastOperation() async -> UndoLog.UndoOutcome? {
         guard let root = deviceRoot else { return nil }
+        let undone = UndoLog.mostRecent(deviceRoot: root)
         let outcome = UndoLog.undoMostRecent(deviceRoot: root)
+        // Undoing a merge also forgets its rules, or the next sync would redo it.
+        if let undone { mergeRules.removeAll { $0.sessionID == undone.id } }
         await rescanAndRefreshList(status)
         return outcome
     }

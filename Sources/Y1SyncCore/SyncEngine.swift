@@ -136,7 +136,9 @@ public struct SyncEngine: Sendable {
 
         // With an optimizer the cover/tag rewrite happens on the Mac, a couple
         // of files ahead of the one being written to the player.
-        let preparer = artworkOptimizer.map { Preparer(actions: plan.actions, optimizer: $0) }
+        let needsEdits = plan.actions.contains { !$0.track.tagEdits.isEmpty }
+        let preparer = (artworkOptimizer != nil || needsEdits)
+            ? Preparer(actions: plan.actions, optimizer: artworkOptimizer) : nil
         defer { preparer?.stop() }
 
         for (index, action) in plan.actions.enumerated() {
@@ -281,7 +283,7 @@ final class Preparer: @unchecked Sendable {
     private let ahead = 2
     private let folder: URL
 
-    init(actions: [SyncAction], optimizer: ArtworkOptimizer) {
+    init(actions: [SyncAction], optimizer: ArtworkOptimizer?) {
         folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("y1sync-prepare-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -297,8 +299,16 @@ final class Preparer: @unchecked Sendable {
                 let out = folder.appendingPathComponent("\(i).\(action.track.fileExtension)")
                 var item = Item(url: out, isTemp: true)
                 do {
-                    item.result = try optimizer.copyOptimising(
-                        from: action.track.sourceURL, to: out, albumArtist: action.track.albumArtist)
+                    if let optimizer {
+                        item.result = try optimizer.copyOptimising(
+                            from: action.track.sourceURL, to: out, albumArtist: action.track.albumArtist)
+                    } else {
+                        try FileManager.default.copyItem(at: action.track.sourceURL, to: out)
+                    }
+                    // Remembered merges: the copy gets the merged spelling; the library keeps its own.
+                    if !action.track.tagEdits.isEmpty {
+                        TagEditor.write(action.track.tagEdits.mapValues { Optional($0) }, in: out)
+                    }
                 } catch {
                     item.error = error
                     try? FileManager.default.removeItem(at: out)

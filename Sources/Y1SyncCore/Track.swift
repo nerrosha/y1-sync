@@ -26,6 +26,9 @@ public struct Track: Sendable, Hashable {
     public var codec: String?
     public var sampleRate: Int?
     public var bitDepth: Int?
+    /// Tags to write into the file when it is copied to the player (set by the
+    /// user's remembered merges); the library file itself is never changed.
+    public var tagEdits: [String: String] = [:]
 
     public init(
         sourceURL: URL,

@@ -30,7 +30,8 @@ public struct UndoSession: Codable, Sendable, Identifiable {
 /// as the device's one undoable session.
 public final class UndoRecorder: @unchecked Sendable {
     private let deviceRoot: URL
-    private let sessionID = UUID()
+    /// Identifies the session this recorder will persist.
+    public let sessionID = UUID()
     private var entries: [UndoEntry] = []
     private let lock = NSLock()
 

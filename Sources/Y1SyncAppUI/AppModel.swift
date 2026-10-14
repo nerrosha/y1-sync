@@ -330,11 +330,15 @@ final class AppModel {
         }.value
         reports = checked
 
-        let playable = checked.filter(\.isPlayable).map(\.track)
+        // Merges the user made on the player apply here too, so the plan matches
+        // the player and the old spellings are not copied back.
+        let rules = AppSettings.mergeRules
+        let playable = MergeRules.apply(rules, to: checked.filter(\.isPlayable).map(\.track))
+        let ruled = Dictionary(playable.map { ($0.sourceURL, $0) }, uniquingKeysWith: { a, _ in a })
         var withArt: Set<String> = []
         for r in checked where r.hasEmbeddedArt {
-            withArt.insert(FATName.foldedKey(
-                "\(r.track.effectiveAlbumArtist)/\(r.track.effectiveAlbum)"))
+            let t = ruled[r.track.sourceURL] ?? r.track
+            withArt.insert(FATName.foldedKey("\(t.effectiveAlbumArtist)/\(t.effectiveAlbum)"))
         }
 
         // Unify album artists so a compilation lands in one folder rather

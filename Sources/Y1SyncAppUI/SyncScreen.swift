@@ -229,6 +229,11 @@ struct SyncScreen: View {
                  + "Nothing on the player is deleted.")
                 .font(.system(size: 14, weight: .semibold))
                 .fixedSize(horizontal: false, vertical: true)
+            let renamed = plan.actions.filter { !$0.track.tagEdits.isEmpty }.count
+            if renamed > 0 {
+                Notice(kind: .info, text: "\(countLabel(renamed, "track")) will get the spelling from your "
+                       + "remembered merges as they are copied. Your library files are not changed.")
+            }
             DisclosureGroup(isExpanded: $showAlbums) {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(report.albums.prefix(300)) { a in

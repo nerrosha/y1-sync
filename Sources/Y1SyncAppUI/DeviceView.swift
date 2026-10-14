@@ -70,6 +70,7 @@ struct DeviceView: View {
                             songListSection
                             similarArtistsSection
                             similarAlbumsSection
+                            mergeRulesSection
                             healthSection
                             formatsSection
                         case .extras:
@@ -396,6 +397,60 @@ struct DeviceView: View {
                         .disabled(model.isBusy)
                     }
                     .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
+    // MARK: - Remembered merges
+
+    @ViewBuilder
+    private var mergeRulesSection: some View {
+        if !model.mergeRules.isEmpty || !model.suggestedRules.isEmpty {
+            PixelBox(title: "Remembered merges") {
+                Text("Your merges are repeated on every sync: files are renamed as they are copied, "
+                     + "so the old spellings in your library do not come back. The library itself is "
+                     + "never changed.")
+                    .font(.system(size: 13)).foregroundStyle(p.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !model.suggestedRules.isEmpty {
+                    Notice(kind: .warn, text: "Your library spells \(countLabel(model.suggestedRules.count, "name")) "
+                           + "differently from the player. Remember them, or the next sync copies the old "
+                           + "spelling back and splits the album again.")
+                    ForEach(model.suggestedRules) { rule in
+                        HStack(spacing: 8) {
+                            Tag(text: rule.kind == .album ? "album" : "artist", kind: .warn)
+                            Text("“\(rule.from)”  →  “\(rule.to)”")
+                                .font(.system(size: 13)).lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: 6)
+                            Button("Remember") {
+                                model.mergeRules = MergeRules.adding([rule], to: model.mergeRules)
+                                UISound.cursor.play()
+                            }
+                            .buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+                        }
+                    }
+                    if model.suggestedRules.count > 1 {
+                        Button("Remember all") {
+                            model.mergeRules = MergeRules.adding(model.suggestedRules, to: model.mergeRules)
+                            UISound.success.play()
+                        }
+                        .buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+                    }
+                }
+                ForEach(model.mergeRules) { rule in
+                    HStack(spacing: 8) {
+                        Tag(text: rule.kind == .album ? "album" : "artist")
+                        Text("“\(rule.from)”  →  “\(rule.to)”")
+                            .font(.system(size: 13)).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 6)
+                        Button("Forget") {
+                            model.mergeRules.removeAll { $0.id == rule.id }
+                            UISound.cursor.play()
+                        }
+                        .buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+                        .help("Stop applying this merge on sync")
+                    }
                 }
             }
         }
