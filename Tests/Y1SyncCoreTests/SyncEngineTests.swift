@@ -119,6 +119,51 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(result.copied, 0)
         XCTAssertEqual(result.failed.count, 1)
     }
+
+    // MARK: Verified copy and cancel
+
+    private func library(_ n: Int, bytes: Int = 3_000_000) throws -> [Track] {
+        try (1...n).map { i in
+            let src = tmp.appendingPathComponent("lib/s\(i).mp3")
+            try makeFile(src, bytes: bytes)
+            return Track(sourceURL: src, title: "S\(i)", artist: "A", album: "B",
+                         trackNumber: i, fileSize: Int64(bytes))
+        }
+    }
+
+    func testEveryCopiedFileIsVerifiedAndIdentical() throws {
+        let tracks = try library(3)
+        let device = tmp.appendingPathComponent("device")
+        try FileManager.default.createDirectory(at: device, withIntermediateDirectories: true)
+        let plan = SyncPlanner().plan(library: tracks, deviceFiles: [])
+        let result = try SyncEngine().execute(plan: plan, deviceRoot: device)
+        XCTAssertEqual(result.copied, 3)
+        XCTAssertEqual(result.verified, 3)
+        XCTAssertFalse(result.cancelled)
+        for a in plan.actions {
+            let copy = device.appendingPathComponent(a.devicePath.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+            XCTAssertEqual(try Data(contentsOf: copy), try Data(contentsOf: a.track.sourceURL))
+        }
+    }
+
+    func testCancelKeepsFinishedFilesAndLeavesNoPartial() throws {
+        let tracks = try library(4)
+        let device = tmp.appendingPathComponent("device")
+        try FileManager.default.createDirectory(at: device, withIntermediateDirectories: true)
+        let plan = SyncPlanner().plan(library: tracks, deviceFiles: [])
+        let done = Counter()
+        let result = try SyncEngine().execute(plan: plan, deviceRoot: device,
+                                              progress: { p in if p.completed >= 1 { done.bump() } },
+                                              cancel: { done.value > 0 })
+        XCTAssertTrue(result.cancelled)
+        XCTAssertGreaterThanOrEqual(result.copied, 1)
+        XCTAssertLessThan(result.copied, 4)
+        let files = FileManager.default.enumerator(at: device, includingPropertiesForKeys: nil)?
+            .compactMap { $0 as? URL } ?? []
+        XCTAssertTrue(files.filter { $0.pathExtension == "part" }.isEmpty)
+        XCTAssertEqual(files.filter { $0.pathExtension == "mp3" }.count, result.copied)
+    }
+
 }
 
 final class PlaylistWriterTests: XCTestCase {
@@ -189,5 +234,32 @@ final class PlaylistWriterTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(
             atPath: device.appendingPathComponent("Playlists/Test.m3u8").path),
             "must not also create a second, unused folder")
+    }
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var n = 0
+    var value: Int { lock.lock(); defer { lock.unlock() }; return n }
+    func bump() { lock.lock(); n += 1; lock.unlock() }
+}
+
+/// Writes a scratch file to a real player to prove flush + read-back work on FAT.
+/// Set Y1_REAL_DEVICE_DIR to a folder on the player; the scratch folder is removed afterwards.
+final class RealDeviceCopyTests: XCTestCase {
+    func testVerifiedCopyOnRealPlayer() throws {
+        guard let dir = ProcessInfo.processInfo.environment["Y1_REAL_DEVICE_DIR"] else { throw XCTSkip("no player") }
+        let base = URL(fileURLWithPath: dir).appendingPathComponent(".y1sync-selftest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let src = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).bin")
+        try Data((0..<(20 * 1024 * 1024)).map { UInt8($0 & 255) }).write(to: src)
+        defer { try? FileManager.default.removeItem(at: src) }
+        let dst = base.appendingPathComponent("x.part")
+        let t0 = Date()
+        try SyncEngine.copyVerified(from: src, to: dst, cancel: nil) { _ in }
+        let secs = Date().timeIntervalSince(t0)
+        print("REAL COPY OK: 20 MB in \(String(format: "%.1f", secs))s")
+        XCTAssertEqual(try Data(contentsOf: dst).count, 20 * 1024 * 1024)
     }
 }

@@ -174,8 +174,15 @@ struct ContentView: View {
     @ViewBuilder
     private var activity: some View {
         if model.phase == .syncing {
-            activityRow(model.progressLabel.isEmpty ? "Copying…" : model.progressLabel,
-                        progress: model.progressFraction)
+            HStack(spacing: 10) {
+                activityRow(model.progressLabel.isEmpty ? "Copying…" : model.progressLabel,
+                            progress: model.progressFraction)
+                Button("Stop") { model.stopSync() }
+                    .buttonStyle(PixelButtonStyle(compact: true))
+                    .fixedSize()
+                    .disabled(model.isStopping)
+                    .help("Stop after the current file. What is already copied stays on the player.")
+            }
         } else if model.phase == .scanning {
             activityRow(model.progressLabel.isEmpty ? "Scanning library…" : model.progressLabel,
                         progress: nil)

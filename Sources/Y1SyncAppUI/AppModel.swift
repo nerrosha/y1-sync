@@ -80,6 +80,16 @@ final class AppModel {
 
     var progressFraction: Double = 0
     var progressLabel: String = ""
+    /// Set by the Stop button; polled by the copy between chunks.
+    private let stopFlag = StopFlag()
+    var isStopping = false
+
+    /// Stop the copy after the current chunk. Files already copied stay.
+    func stopSync() {
+        stopFlag.set()
+        isStopping = true
+        progressLabel = "Stopping…"
+    }
 
     /// Written to /Playlists when non-empty.
     var playlistName: String = ""
@@ -401,10 +411,33 @@ final class AppModel {
 
     // MARK: - Sync
 
+    /// "12 of 388 · 8.2 MB/s · about 4 min left".
+    nonisolated static func progressText(_ p: SyncProgress, elapsed: TimeInterval) -> String {
+        var text = "\(min(p.completed + 1, p.total)) of \(p.total)"
+        if elapsed > 3, p.bytesCopied > 0 {
+            let speed = Double(p.bytesCopied) / elapsed
+            text += " · \(ByteFormat.string(Int64(speed)))/s"
+            let left = Double(p.bytesTotal - p.bytesCopied) / speed
+            if elapsed > 8 { text += " · " + etaText(left) }
+        }
+        return text
+    }
+
+    nonisolated static func etaText(_ seconds: Double) -> String {
+        if seconds < 90 { return "under a minute left" }
+        let minutes = Int((seconds / 60).rounded())
+        if minutes < 60 { return "about \(minutes) min left" }
+        return "about \(minutes / 60) h \(minutes % 60) min left"
+    }
+
     func sync() async {
         guard let plan, let device = selectedDevice else { return }
         phase = .syncing
         progressFraction = 0
+        stopFlag.reset()
+        isStopping = false
+        let started = Date()
+        let stop = stopFlag
 
         let engine = makeEngine()
         let root = device.url
@@ -415,15 +448,15 @@ final class AppModel {
         // main actor before touching observable state.
         let result: Result<SyncResult, Error> = await Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                let r = try engine.execute(plan: plan, deviceRoot: root) { p in
+                let r = try engine.execute(plan: plan, deviceRoot: root, progress: { p in
+                    let elapsed = Date().timeIntervalSince(started)
                     Task { @MainActor in
-                        guard let self else { return }
+                        guard let self, !self.isStopping else { return }
                         self.progressFraction = p.bytesTotal > 0
                             ? Double(p.bytesCopied) / Double(p.bytesTotal) : 1
-                        self.progressLabel = "\(p.completed) of \(p.total) — "
-                            + (p.currentPath as NSString).lastPathComponent
+                        self.progressLabel = Self.progressText(p, elapsed: elapsed)
                     }
-                }
+                }, cancel: { stop.isSet })
                 if !name.isEmpty {
                     try PlaylistWriter().write(name: name, tracks: selected, deviceRoot: root)
                 }
@@ -453,13 +486,16 @@ final class AppModel {
         case .success(let r):
             progressFraction = 1
             progressLabel = ""
-            var summary = "Copied \(r.copied)"
+            var summary = r.cancelled ? "Stopped. Copied \(r.copied)" : "Copied \(r.copied)"
             if r.replaced > 0 { summary += ", replaced \(r.replaced)" }
             summary += " — \(ByteFormat.string(r.bytesCopied)) written."
             if r.artworkShrunk > 0 {
                 summary += " Resized art on \(r.artworkShrunk) file(s)."
             }
             if !r.failed.isEmpty { summary += " \(r.failed.count) failed." }
+            if r.verified > 0 {
+                summary += " Every copied file was read back from the player and matched."
+            }
             if !listNote.isEmpty { summary += " " + listNote }
             // Rescan so the plan reflects what is now on the player, then
             // restore the summary — scanAndPlan() leaves phase at .planned,
@@ -473,4 +509,13 @@ final class AppModel {
             phase = .failed(message)
         }
     }
+}
+
+/// Thread-safe "stop requested" switch shared with the copy running off the main actor.
+final class StopFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
+    func set() { lock.lock(); value = true; lock.unlock() }
+    func reset() { lock.lock(); value = false; lock.unlock() }
 }
