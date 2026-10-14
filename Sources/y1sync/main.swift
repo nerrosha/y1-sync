@@ -21,6 +21,7 @@ func printUsage() {
       y1sync artists [--device <name>] [--to <path>]
       y1sync albums [--device <name>] [--to <path>]
       y1sync library [--device <name>] [--to <path>] [--apply]
+      y1sync merges --library <folder> [--device <name>] [--to <path>]
       y1sync formats [--device <name>] [--to <path>]
       y1sync health [--device <name>] [--to <path>] [--library <folder>] [--repair] [--remove]
       y1sync playlists [--device <name>] [--to <path>] [--mood] [--tempo] [--genre]
@@ -574,6 +575,20 @@ case "library":
     guard args.apply else { print("\nNothing changed. Re-run with --apply to update the list."); break }
     let r = try PlayerLibraryCache.sync(deviceRoot: target, deviceTracks: onCard)
     print("\nUpdated the player's song list: \(r.added) added, \(r.removed) removed. Backup: \(PlayerLibraryCache.fileName).y1sync-backup")
+
+case "merges":
+    let target = resolveTarget(args)
+    guard let path = args.library else { fail("pass --library <folder>") }
+    let device = await LibraryScanner().scan(root: target, cache: ScanCache(root: target))
+    let root = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+    let lib = await LibraryScanner().scan(root: root, cache: ScanCache(root: root))
+    let rules = MergeRules.learn(library: lib, device: device)
+    if rules.isEmpty { print("The library and the player spell everything the same way.") }
+    for r in rules { print("\(r.kind.rawValue): “\(r.from)” → “\(r.to)”") }
+    let applied = MergeRules.apply(rules, to: lib)
+    let plan = SyncPlanner().plan(library: applied, deviceFiles: SyncEngine().scanDevice(root: target))
+    let before = SyncPlanner().plan(library: lib, deviceFiles: SyncEngine().scanDevice(root: target))
+    print("Tracks to copy: \(before.actions.count) without the rules, \(plan.actions.count) with them.")
 
 case "formats":
     let target = resolveTarget(args)
