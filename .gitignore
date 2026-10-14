@@ -4,3 +4,8 @@ build/
 .DS_Store
 *.xcodeproj
 check-log.txt
+
+# Optional UI sounds: bring your own; they are not tracked.
+Resources/Sounds/*.mp3
+Resources/Sounds/*.wav
+Resources/Sounds/*.aif
