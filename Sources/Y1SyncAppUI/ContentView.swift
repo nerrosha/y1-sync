@@ -91,6 +91,8 @@ struct ContentView: View {
 
             Spacer(minLength: 0)
 
+            supportButton
+
             Button {
                 appearance = appearance.next
                 UISound.cursor.play()
@@ -125,6 +127,34 @@ struct ContentView: View {
         .frame(height: 40, alignment: .top)
         .frame(maxWidth: .infinity)
         .background(p.paper)
+    }
+
+    /// "Support the author": a heart that opens the donation page(s) in the browser.
+    @ViewBuilder
+    private var supportButton: some View {
+        if Support.links.count == 1, let link = Support.links.first {
+            Button {
+                NSWorkspace.shared.open(link.url)
+            } label: {
+                Image(systemName: "heart.fill").frame(width: 18)
+            }
+            .buttonStyle(PixelButtonStyle(compact: true))
+            .fixedSize()
+            .help("Support the author (\(link.title))")
+            .accessibilityLabel("Support the author")
+        } else if Support.links.count > 1 {
+            Menu {
+                ForEach(Support.links, id: \.title) { link in
+                    Button(link.title) { NSWorkspace.shared.open(link.url) }
+                }
+            } label: {
+                Image(systemName: "heart.fill").frame(width: 18)
+            }
+            .menuStyle(.button).buttonStyle(PixelButtonStyle(compact: true))
+            .fixedSize()
+            .help("Support the author")
+            .accessibilityLabel("Support the author")
+        }
     }
 
     private var tabs: [PixelTab<Tab>] {

@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://ko-fi.com/nerrosha"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white"></a>
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-black?style=flat-square">
   <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-orange?style=flat-square">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square">
@@ -171,6 +172,10 @@ The code is [MIT](LICENSE). Third-party files keep their own terms:
 
 - `Resources/Fonts/PixelifySans-*` — SIL Open Font License 1.1 (`PixelifySans-OFL.txt`).
 - Interface sounds are optional: put your own files in `Resources/Sounds` (see `Resources/Sounds/README.txt`). Without them the app is silent.
+
+## Support
+
+Y1 Sync is free and stays free. If it saved you time, you can [buy the author a coffee on Ko-fi](https://ko-fi.com/nerrosha) — thank you! ☕
 
 ## Contact
 
