@@ -14,7 +14,8 @@ enum AppSettings {
         static let preferredDevice = "preferredDeviceName"
         static let playlistName = "playlistName"
         static let resizeArtwork = "resizeArtwork"
-        static let maxArtDimension = "maxArtDimension"
+        // V2: the default moved from 500 to 1000 px, so an old saved 500 is not carried over.
+        static let maxArtDimension = "maxArtDimensionV2"
         static let fetchLyrics = "fetchLyrics"
         static let fetchCovers = "fetchCovers"
         static let excludedAlbums = "excludedAlbums"
@@ -87,7 +88,7 @@ enum AppSettings {
     static var maxArtDimension: Int {
         get {
             let v = defaults.integer(forKey: Key.maxArtDimension)
-            return v > 0 ? v : 500
+            return v > 0 ? v : 1000
         }
         set { defaults.set(newValue, forKey: Key.maxArtDimension) }
     }

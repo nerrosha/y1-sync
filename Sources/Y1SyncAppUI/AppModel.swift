@@ -49,7 +49,7 @@ final class AppModel {
 
     /// Longest edge for embedded cover art. Stock Innioasis firmware reads art
     /// from the file's tags and misbehaves above roughly this size.
-    var maxArtDimension: Int = 500
+    var maxArtDimension: Int = 1000
     var resizeArtwork = true
 
     /// Online lookups. Off by default: they send artist, album and track

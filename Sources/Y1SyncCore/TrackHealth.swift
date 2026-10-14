@@ -107,7 +107,7 @@ public struct TrackHealth: Sendable {
     /// Formats the player is known (to the user) not to play.
     public var limits: PlayerLimits
 
-    public init(maxEmbeddedArtBytes: Int = 256 * 1024,
+    public init(maxEmbeddedArtBytes: Int = 1024 * 1024,
                 maxEmbeddedArtPixels: Int = 1000,
                 deepCheck: Bool = true,
                 minimumDuration: Double = 1.0,

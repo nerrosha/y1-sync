@@ -54,7 +54,7 @@ final class DeviceModel {
     /// Groups the user has chosen to act on, by group id.
     var selectedDuplicates: Set<String> = []
 
-    var maxArtDimension = 500
+    var maxArtDimension = 1000
     var removeJunk = AppSettings.removeJunk
     /// Merges to repeat on every sync, so the library's old spellings do not come back.
     var mergeRules = AppSettings.mergeRules {

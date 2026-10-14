@@ -74,7 +74,7 @@ func printUsage() {
       --device <name>    Volume name, when more than one is connected.
       --to <path>        Target a folder directly instead of a mounted volume.
       --playlist <name>  Also write /Playlists/<name>.m3u8 covering the library.
-      --max-art <px>     Longest edge for embedded cover art (default 500).
+      --max-art <px>     Longest edge for embedded cover art (default 1000).
       --keep-art         Do not resize oversized embedded cover art.
       --copy-broken      Copy files that fail the health check anyway.
       --split-albums     Do not unify album artists that disagree.
@@ -89,7 +89,7 @@ func printUsage() {
     MusicBrainz to look them up. Both are free and need no account.
 
     Stock Innioasis firmware reads album art from each file's own metadata and
-    struggles above roughly 500x500, so oversized art is resized by default.
+    can run out of memory on very large images (InniClassic wants 600–1000 px), so oversized art is resized by default.
     The player does not mount until you enable USB storage on the device.
     """)
 }
@@ -100,7 +100,7 @@ struct Args {
     var device: String?
     var to: String?
     var playlist: String?
-    var maxArt = 500
+    var maxArt = 1000
     var keepArt = false
     var copyBroken = false
     var splitAlbums = false
@@ -127,7 +127,7 @@ struct Args {
             case "--device": device = rest[safe: i + 1]; i += 2
             case "--to": to = rest[safe: i + 1]; i += 2
             case "--playlist": playlist = rest[safe: i + 1]; i += 2
-            case "--max-art": maxArt = Int(rest[safe: i + 1] ?? "") ?? 500; i += 2
+            case "--max-art": maxArt = Int(rest[safe: i + 1] ?? "") ?? 1000; i += 2
             case "--keep-art": keepArt = true; i += 1
             case "--copy-broken": copyBroken = true; i += 1
             case "--split-albums": splitAlbums = true; i += 1

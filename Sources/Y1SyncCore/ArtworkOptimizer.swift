@@ -5,18 +5,18 @@ import UniformTypeIdentifiers
 
 /// Shrinks oversized embedded cover art on its way to the player.
 ///
-/// Stock Innioasis firmware reads artwork from the file's own metadata and
-/// struggles with large images — the community guidance is roughly 500x500,
-/// beyond which browsing lags and the player can misbehave. This rewrites the
-/// tag on the *copy* that goes to the device; the original library file is
-/// never modified.
+/// The player's launcher reads artwork from the file's own metadata. Huge images
+/// can exhaust its memory (the stock firmware crashed on them), but InniClassic
+/// shows covers close to full screen and asks for at least 600x600, ideally
+/// 1000x1000, so the default keeps 1000 px. This rewrites the tag on the *copy*
+/// that goes to the device; the original library file is never modified.
 public struct ArtworkOptimizer: Sendable {
     /// Longest edge kept on the device.
     public var maxDimension: Int
     /// JPEG quality for the re-encoded cover.
     public var quality: Double
 
-    public init(maxDimension: Int = 500, quality: Double = 0.85) {
+    public init(maxDimension: Int = 1000, quality: Double = 0.85) {
         self.maxDimension = maxDimension
         self.quality = quality
     }

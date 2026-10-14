@@ -606,7 +606,9 @@ struct DeviceView: View {
             Text("Which formats and qualities are on the player. If some files will not play, "
                  + "set the highest quality it handles: files above it are flagged under "
                  + "Broken files, replaced from your library when a copy within the limit exists, "
-                 + "and skipped on sync. Nothing is converted.")
+                 + "and skipped on sync. Nothing is converted. "
+                 + "A file the player cannot decode shows “Legacy Player Error: 262” — "
+                 + "find its format in the list below.")
                 .font(.system(size: 13)).foregroundStyle(p.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
 

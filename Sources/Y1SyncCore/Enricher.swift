@@ -31,7 +31,7 @@ public struct Enricher: Sendable {
     public init(lyrics: LyricsFetcher = LyricsFetcher(),
                 covers: CoverFetcher = CoverFetcher(),
                 layout: DeviceLayout = DeviceLayout(),
-                maxArtDimension: Int = 500,
+                maxArtDimension: Int = 1000,
                 inPlace: Bool = false) {
         self.lyrics = lyrics
         self.covers = covers

@@ -33,7 +33,7 @@ of the design:
   invisible to `readdir`, `ls -a` and `FileManager`, but plainly visible to the
   player. They can only be found by probing each sibling path.
 - **Cover art must be small.** Stock Innioasis firmware reads artwork from each
-  file's own tags, and community guidance is roughly 500x500 — beyond that the
+  file's own tags, and a very large image can exhaust its memory — beyond about 1000 px the
   player lags and can lock up. Oversized art is therefore resized and re-embedded
   during the copy, rewriting only the ID3 tag so the audio frames pass through
   byte-for-byte. **Your original files are never modified.**
@@ -67,7 +67,7 @@ open "build/Y1 Sync.app"
 to see exactly what would be copied, then **Sync to player**.
 
 **Results tab** — after a sync, every copied file is listed with tags showing
-what was fixed (`cover 1600x1600 → 500x500`, `lyrics added`, `album artist → …`),
+what was fixed (`cover 1600x1600 → 1000x1000`, `lyrics added`, `album artist → …`),
 plus a section listing any files that were **skipped** and why. Select a file
 to play it **straight off the device**, with its embedded artwork and synced
 lyrics highlighting in time with the audio. Click any lyric line to seek there.
@@ -124,7 +124,7 @@ write `cover.bmp` (Rockbox only).
 
 - Scans MP3, FLAC, OGG, Opus, M4A, AAC, WAV, WavPack, APE, Musepack, AIFF
 - Verifies every file decodes; skips empty, truncated and corrupt ones
-- Resizes oversized embedded cover art (default 500px) during the copy
+- Resizes oversized embedded cover art (default 1000px; InniClassic shows covers large and asks for 600–1000 px) during the copy
 - Unifies album artists so a compilation lands in one folder, not one per guest
 - Reports duplicate/missing track numbers, gaps, and untagged files
 - Resizes oversized art in **MP3 and FLAC**, rewriting only the tag so audio is

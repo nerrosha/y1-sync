@@ -100,10 +100,11 @@ public struct Track: Sendable, Hashable {
     }
 }
 
-/// Audio containers Rockbox on the Y1 can decode. Used to filter the library
-/// scan; anything else on disk is ignored rather than copied and left unplayable.
+/// Audio containers the Y1's launcher (InniClassic) scans and plays. Used to filter
+/// the library scan; anything else on disk is ignored rather than copied and left
+/// invisible on the player.
 public enum SupportedFormat: String, CaseIterable, Sendable {
-    case mp3, flac, ogg, opus, m4a, aac, wav, wv, ape, mpc, aiff, aif
+    case mp3, flac, ogg, opus, m4a, m4b, aac, wav, ape, wma
 
     public static func isSupported(_ ext: String) -> Bool {
         SupportedFormat(rawValue: ext.lowercased()) != nil
