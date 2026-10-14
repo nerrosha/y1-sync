@@ -187,3 +187,78 @@ final class FLACTests: XCTestCase {
         XCTAssertFalse(ArtworkOptimizer.isRewritable(URL(fileURLWithPath: "/a/b.m4a")))
     }
 }
+
+/// The cheap end-of-file check that finds cut-off FLAC copies without decoding.
+final class FLACTruncationTests: XCTestCase {
+    private var tmp: URL!
+    override func setUpWithError() throws {
+        tmp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("flac-tail-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+    }
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: tmp) }
+
+    private let block = 4096
+
+    private func utf8(_ n: Int) -> [UInt8] {
+        if n < 0x80 { return [UInt8(n)] }
+        if n < 0x800 { return [0xC0 | UInt8(n >> 6), 0x80 | UInt8(n & 0x3F)] }
+        return [0xE0 | UInt8(n >> 12), 0x80 | UInt8((n >> 6) & 0x3F), 0x80 | UInt8(n & 0x3F)]
+    }
+
+    /// A FLAC with real frame headers (valid CRC-8) and filler for samples.
+    private func makeFLAC(frames: Int, claimed: Int) -> Data {
+        var si = [UInt8](repeating: 0, count: 34)
+        si[0] = UInt8(block >> 8); si[1] = UInt8(block & 0xFF)       // min block
+        si[2] = si[0]; si[3] = si[1]                                  // max block
+        let rate = 44100                                              // 20 bits
+        si[10] = UInt8(rate >> 12); si[11] = UInt8((rate >> 4) & 0xFF)
+        si[12] = UInt8((rate & 0x0F) << 4) | (1 << 1)                 // 2 channels, 16 bit (high bit 0)
+        let total = claimed * block
+        si[13] = 0xF0 | UInt8((total >> 32) & 0x0F)             // bps low bits + total high
+        si[14] = UInt8((total >> 24) & 0xFF); si[15] = UInt8((total >> 16) & 0xFF)
+        si[16] = UInt8((total >> 8) & 0xFF); si[17] = UInt8(total & 0xFF)
+
+        var out = Data("fLaC".utf8)
+        out.append(contentsOf: [0x80, 0, 0, 34])
+        out.append(contentsOf: si)
+        for n in 0..<frames {
+            var h: [UInt8] = [0xFF, 0xF8, 0xC9, 0x18] + utf8(n)       // fixed, 4096, 44.1k, stereo/16
+            h.append(FLAC.crc8(h[0...]))
+            out.append(contentsOf: h)
+            out.append(Data(repeating: UInt8(0x11 + n % 3), count: 300))
+        }
+        return out
+    }
+
+    func testCompleteFileIsNotFlagged() throws {
+        let url = tmp.appendingPathComponent("ok.flac")
+        try makeFLAC(frames: 120, claimed: 120).write(to: url)
+        XCTAssertNil(FLAC.truncationReason(url))
+    }
+
+    func testCutOffFileIsFlaggedWithRoughMissingTime() throws {
+        let url = tmp.appendingPathComponent("cut.flac")
+        try makeFLAC(frames: 60, claimed: 120).write(to: url)       // half of 120*4096/44100 ≈ 11 s
+        let why = try XCTUnwrap(FLAC.truncationReason(url))
+        XCTAssertTrue(why.contains("cut off"), why)
+        XCTAssertTrue(why.contains("5 s") || why.contains("6 s"), why)
+    }
+
+    func testFileMissingJustTheLastFrameIsTolerated() throws {
+        let url = tmp.appendingPathComponent("almost.flac")
+        try makeFLAC(frames: 119, claimed: 120).write(to: url)
+        XCTAssertNil(FLAC.truncationReason(url))
+    }
+
+    func testUnknownLengthIsNeverFlagged() throws {
+        let url = tmp.appendingPathComponent("unknown.flac")
+        try makeFLAC(frames: 10, claimed: 0).write(to: url)
+        XCTAssertNil(FLAC.truncationReason(url))
+    }
+
+    func testCRCRejectsLookalikeBytes() {
+        // FF F8 followed by junk must not be taken for a frame header.
+        let junk: [UInt8] = [0xFF, 0xF8, 0xC9, 0x18, 0x05, 0x00, 0x00, 0x00]
+        XCTAssertNil(FLAC.parseFrameHeader(junk, at: 0, fixedBlock: 4096))
+    }
+}

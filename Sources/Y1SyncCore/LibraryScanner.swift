@@ -35,7 +35,7 @@ public struct LibraryScanner: Sendable {
 
         // AVFoundation does not expose Vorbis comments, so FLAC has to be
         // parsed directly or a whole lossless library reads as "Unknown".
-        if FLAC.isFLAC(url), let meta = FLAC.read(url) {
+        if FLAC.isFLAC(url), let meta = FLAC.read(url, includePictures: false) {
             track.title = meta["TITLE"]
             track.artist = meta["ARTIST"]
             track.albumArtist = meta["ALBUMARTIST"] ?? meta["ALBUM ARTIST"] ?? meta["ALBUM_ARTIST"]
@@ -48,7 +48,11 @@ public struct LibraryScanner: Sendable {
             track.bpm = meta["BPM"].flatMap(Double.init)
             track.moods = Self.parseMoods(meta["AB:MOOD"])
 
-            if let duration = try? await AVURLAsset(url: url).load(.duration), duration.isNumeric {
+            // The length is in STREAMINFO; asking AVFoundation for it opens the
+            // file a second time, which is slow on a USB player.
+            if let seconds = FLAC.streamInfo(url)?.duration {
+                track.durationSeconds = seconds
+            } else if let duration = try? await AVURLAsset(url: url).load(.duration), duration.isNumeric {
                 track.durationSeconds = CMTimeGetSeconds(duration)
             }
             return track

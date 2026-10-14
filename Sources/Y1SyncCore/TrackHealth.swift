@@ -92,11 +92,23 @@ public struct TrackHealth: Sendable {
     /// decode as a fraction of a second of noise, which passes every other
     /// check; no real song is this short.
     public var minimumDuration: Double
+    /// Also decode the last seconds. A cut-off download or interrupted copy
+    /// keeps a valid start and a header that still claims the full length, so
+    /// only the end shows it. Costs a seek per file, so it is off for the
+    /// pre-copy check and on when auditing what is already on the player.
+    public var checkTail: Bool
+    /// Only decide playability: skip cover-art and missing-tag findings, which
+    /// cost extra reads and don't matter when auditing files already on the player.
+    public var audioOnly: Bool
 
     public init(maxEmbeddedArtBytes: Int = 256 * 1024,
                 maxEmbeddedArtPixels: Int = 1000,
                 deepCheck: Bool = true,
-                minimumDuration: Double = 1.0) {
+                minimumDuration: Double = 1.0,
+                checkTail: Bool = false,
+                audioOnly: Bool = false) {
+        self.checkTail = checkTail
+        self.audioOnly = audioOnly
         self.maxEmbeddedArtBytes = maxEmbeddedArtBytes
         self.maxEmbeddedArtPixels = maxEmbeddedArtPixels
         self.deepCheck = deepCheck
@@ -105,7 +117,24 @@ public struct TrackHealth: Sendable {
 
     /// Decode the first slice of audio. Returns a reason on failure, nil when
     /// the file yields real samples.
-    func decodeFailure(_ asset: AVURLAsset) async -> String? {
+    func decodeFailure(_ asset: AVURLAsset, duration: Double? = nil) async -> String? {
+        if let why = await decodeSlice(asset, start: 0, length: 2) { return why }
+        guard checkTail, let duration, duration > 8 else { return nil }
+
+        if FLAC.isFLAC(asset.url) {
+            // FLAC can't seek cheaply, so decoding the tail would read the
+            // whole file. Look at the end of the file first; only a file that
+            // looks cut off is then confirmed by actually decoding its tail.
+            guard let reason = FLAC.truncationReason(asset.url) else { return nil }
+            return await decodeSlice(asset, start: duration - 3, length: 3) != nil ? reason : nil
+        }
+        if await decodeSlice(asset, start: duration - 3, length: 3) != nil {
+            return "the end of the file is missing — cut off"
+        }
+        return nil
+    }
+
+    func decodeSlice(_ asset: AVURLAsset, start: Double, length: Double) async -> String? {
         do {
             guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
                 return "no audio stream"
@@ -122,8 +151,8 @@ public struct TrackHealth: Sendable {
 
             // A couple of seconds is enough to catch a bad header or a stream
             // that decodes to nothing, without reading whole albums.
-            reader.timeRange = CMTimeRange(start: .zero,
-                                           duration: CMTime(seconds: 2, preferredTimescale: 600))
+            reader.timeRange = CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600),
+                                           duration: CMTime(seconds: length, preferredTimescale: 600))
             guard reader.startReading() else {
                 return reader.error?.localizedDescription ?? "could not start decoding"
             }
@@ -151,6 +180,7 @@ public struct TrackHealth: Sendable {
         }
 
         let asset = AVURLAsset(url: track.sourceURL)
+        var durationSeconds: Double?
 
         do {
             let audioTracks = try await asset.loadTracks(withMediaType: .audio)
@@ -158,6 +188,7 @@ public struct TrackHealth: Sendable {
 
             let duration = try await asset.load(.duration)
             let seconds = CMTimeGetSeconds(duration)
+            durationSeconds = seconds.isFinite ? seconds : nil
             if !duration.isNumeric || seconds <= 0 {
                 issues.append(.zeroDuration)
             } else if seconds < minimumDuration {
@@ -174,10 +205,12 @@ public struct TrackHealth: Sendable {
         // "1 audio track, 0.52s". Only pulling real samples out proves the
         // file will actually play.
         if deepCheck, !issues.contains(where: \.isBlocking) {
-            if let why = await decodeFailure(asset) {
+            if let why = await decodeFailure(asset, duration: durationSeconds) {
                 issues.append(.undecodable(why))
             }
         }
+
+        if audioOnly { return TrackReport(track: track, issues: issues) }
 
         let art = await artworkIssues(for: track.sourceURL)
         issues.append(contentsOf: art.issues)

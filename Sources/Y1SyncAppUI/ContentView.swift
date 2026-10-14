@@ -38,6 +38,7 @@ struct ContentView: View {
             model.startWatchingVolumes()
             deviceModel.deviceChanged(to: model.selectedDevice?.url)
         }
+        .onChange(of: model.libraryTracks.count) { deviceModel.libraryTracks = model.libraryTracks }
         .onChange(of: model.selectedDevice?.url) { _, url in
             // The Device and Duplicates tabs hold a scan of one specific
             // player; never let it act on a different one.

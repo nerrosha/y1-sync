@@ -10,6 +10,8 @@ struct DeviceView: View {
 
     @State private var confirmTidy = false
     @State private var confirmForget = false
+    @State private var confirmRepair = false
+    @State private var confirmRemoveBroken = false
     // Remembered between launches.
     @AppStorage("deviceWantLyrics") private var wantLyrics = true
     @AppStorage("deviceWantCovers") private var wantCovers = true
@@ -49,6 +51,7 @@ struct DeviceView: View {
                         tidySection(plan)
                             .frame(maxWidth: .infinity)
                         VStack(spacing: Pixel.gap) {
+                            healthSection
                             enrichSection
                             smartPlaylistsSection
                         }
@@ -86,6 +89,23 @@ struct DeviceView: View {
                       message: "Frees the space it was holding right away. This can't be undone.",
                       confirmTitle: "Discard") {
             model.forgetUndoSession()
+        }
+        .pixelConfirm(isPresented: $confirmRepair,
+                      title: "Replace broken files",
+                      message: "Each broken file moves to the undo quarantine and the intact copy from "
+                          + "your library is copied in its place. Files without a replacement stay as they are.",
+                      confirmTitle: "Replace") {
+            UISound.confirm.play()
+            Task { await model.fixBroken(removeUnrepairable: false); UISound.success.play() }
+        }
+        .pixelConfirm(isPresented: $confirmRemoveBroken,
+                      title: "Remove broken files",
+                      message: "Broken files with no intact copy in your library move to the undo quarantine, "
+                          + "so they stop showing up as tracks that don't play. Undo brings them back "
+                          + "until the next tidy or cleanup.",
+                      confirmTitle: "Remove") {
+            UISound.confirm.play()
+            Task { await model.fixBroken(removeUnrepairable: true); UISound.success.play() }
         }
         .onChange(of: model.removeJunk) { AppSettings.removeJunk = model.removeJunk }
     }
@@ -208,6 +228,73 @@ struct DeviceView: View {
             Text(title).font(.pixel(15, bold: true)).lineLimit(1)
         }
         .tint(p.ink)
+    }
+
+    // MARK: - Health
+
+    private var healthSection: some View {
+        PixelBox(title: "Broken files") {
+            Text("Plays the start and the end of every file on the player, so cut-off copies "
+                 + "show up too. Nothing is changed until you choose.")
+                .font(.system(size: 12))
+                .foregroundStyle(p.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let broken = model.brokenFiles {
+                if broken.isEmpty {
+                    Notice(kind: .good, text: "All files play fine.")
+                } else {
+                    let fixable = broken.filter { $0.replacement != nil }.count
+                    Notice(kind: .bad, text: "\(countLabel(broken.count, "broken file")); "
+                           + "\(fixable) can be replaced from your library.")
+                    if model.libraryTracks.isEmpty {
+                        Text("Scan the music folder on the Sync tab first to find replacements.")
+                            .font(.system(size: 11)).foregroundStyle(p.inkSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(broken) { b in
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(b.devicePath).font(.system(size: 11, design: .monospaced))
+                                        .lineLimit(1).truncationMode(.middle)
+                                    Text(b.reasons.joined(separator: "; ") + (b.replacement == nil
+                                         ? "" : " — replacement found"))
+                                        .font(.system(size: 11)).foregroundStyle(p.inkSoft)
+                                        .lineLimit(2)
+                                }
+                            }
+                        }
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 130)
+                    .pixelFrame(fill: p.paper, border: p.line, width: 2)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Button(model.brokenFiles == nil ? "Check files" : "Check again") {
+                    UISound.cursor.play()
+                    Task { await model.checkHealth() }
+                }
+                .buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+                .disabled(model.isBusy)
+
+                if let broken = model.brokenFiles, !broken.isEmpty {
+                    if broken.contains(where: { $0.replacement != nil }) {
+                        Button("Replace") { confirmRepair = true }
+                            .buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+                            .disabled(model.isBusy)
+                    }
+                    if broken.contains(where: { $0.replacement == nil }) {
+                        Button("Remove the rest") { confirmRemoveBroken = true }
+                            .buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+                            .disabled(model.isBusy)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Enrich

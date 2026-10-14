@@ -11,6 +11,7 @@ final class DeviceModel {
         case idle
         case scanning
         case tidying
+        case checking
         case enriching(String)
     }
 
@@ -21,6 +22,12 @@ final class DeviceModel {
     var tracks: [Track] = []
     var tidyPlan: TidyPlan?
     var duplicates: [DuplicateGroup] = []
+
+    /// Library tracks, used to find an intact copy of a broken file. Set by
+    /// the window from the Sync tab's scan; empty until the library is scanned.
+    var libraryTracks: [Track] = []
+    /// Result of the last health check; nil until one has run.
+    var brokenFiles: [BrokenFile]?
 
     /// Groups the user has chosen to act on, by group id.
     var selectedDuplicates: Set<String> = []
@@ -50,6 +57,7 @@ final class DeviceModel {
         tracks = []
         tidyPlan = nil
         duplicates = []
+        brokenFiles = nil
         selectedDuplicates = []
         progress = 0
         undoSession = root.flatMap { UndoLog.mostRecent(deviceRoot: $0) }
@@ -90,6 +98,47 @@ final class DeviceModel {
         status = "\(found.count) track(s) · \(plan.moves.count) to rename · "
                + "\(plan.junk.count) junk file(s) · \(dupes.count) duplicate group(s)"
         busy = .idle
+    }
+
+    /// Decode the start and end of every file on the player and list the ones
+    /// that will not play. Nothing is changed.
+    func checkHealth() async {
+        guard let root = deviceRoot, !tracks.isEmpty, !isBusy else { return }
+        busy = .checking
+        progress = 0
+        status = "Checking \(countLabel(tracks.count, "file"))…"
+        let found = tracks
+        let library = libraryTracks
+        let result = await Task.detached(priority: .userInitiated) { [weak self] in
+            await DeviceHealth().scan(deviceTracks: found, deviceRoot: root, library: library) { done, total in
+                Task { @MainActor in
+                    self?.progress = total > 0 ? Double(done) / Double(total) : 1
+                    self?.status = "Checking \(done) of \(total)…"
+                }
+            }
+        }.value
+        brokenFiles = result
+        busy = .idle
+        status = result.isEmpty
+            ? "All \(countLabel(found.count, "file")) play fine."
+            : "\(countLabel(result.count, "broken file")) found."
+    }
+
+    /// Replace broken files from the library (and optionally remove the ones
+    /// with no intact copy). Reversible with Undo.
+    func fixBroken(removeUnrepairable: Bool) async {
+        guard let root = deviceRoot, let items = brokenFiles, !items.isEmpty, !isBusy else { return }
+        busy = .tidying
+        status = "Repairing…"
+        let outcome = await Task.detached(priority: .userInitiated) {
+            DeviceHealth().fix(items, deviceRoot: root, removeUnrepairable: removeUnrepairable)
+        }.value
+        busy = .idle
+        var text = "Replaced \(outcome.replaced), removed \(outcome.removed)."
+        if !outcome.failed.isEmpty { text += " \(outcome.failed.count) could not be fixed." }
+        await scan(deviceRoot: root)
+        status = text
+        brokenFiles = nil
     }
 
     /// Rename files into the standard layout and clear macOS junk.

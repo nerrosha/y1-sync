@@ -15,7 +15,7 @@ import Foundation
 public enum AudioSize {
     public static func of(_ url: URL, size: Int64) -> Int64? {
         if FLAC.isFLAC(url) {
-            guard let offset = FLAC.readBlocks(url)?.audioOffset else { return nil }
+            guard let offset = FLAC.streamInfo(url)?.audioOffset else { return nil }
             return max(0, (fileSize(url) ?? size) - Int64(offset))
         }
         guard url.pathExtension.lowercased() == "mp3" else { return nil }

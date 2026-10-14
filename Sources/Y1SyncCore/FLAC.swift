@@ -38,7 +38,11 @@ public enum FLAC {
     ///
     /// Only the metadata is read; the audio frames that follow are ignored,
     /// so this stays cheap even on large lossless files.
-    public static func read(_ url: URL) -> Metadata? {
+    ///
+    /// `includePictures: false` seeks past embedded cover art instead of reading
+    /// it — the art is typically 100 KB–1 MB per file, which on a USB 2.0 player
+    /// reading ~5 MB/s is most of the time spent scanning tags.
+    public static func read(_ url: URL, includePictures: Bool = true) -> Metadata? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
 
@@ -63,7 +67,7 @@ public enum FLAC {
                 if let body = try? handle.read(upToCount: length), body.count == length {
                     parseVorbisComment(body, into: &meta)
                 }
-            case .picture:
+            case .picture where includePictures:
                 if let body = try? handle.read(upToCount: length), body.count == length,
                    let picture = parsePicture(body) {
                     meta.pictures.append(picture)
@@ -159,6 +163,55 @@ extension FLAC {
     public struct Block {
         public var type: UInt8
         public var data: Data
+    }
+
+    public struct StreamInfo: Sendable {
+        public var sampleRate: Int
+        public var totalSamples: Int
+        public var minBlock: Int
+        public var maxBlock: Int
+        /// Where the audio frames begin, i.e. the size of all metadata.
+        public var audioOffset: UInt64
+
+        /// Length in seconds; nil when the encoder did not record the sample count.
+        public var duration: Double? {
+            totalSamples > 0 && sampleRate > 0 ? Double(totalSamples) / Double(sampleRate) : nil
+        }
+    }
+
+    /// STREAMINFO plus the audio offset, reading only block headers and the
+    /// 34-byte STREAMINFO body — every other block (cover art, seek table,
+    /// comments) is skipped with a seek, so this costs a few KB of reads.
+    public static func streamInfo(_ url: URL) -> StreamInfo? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let magic = try? handle.read(upToCount: 4), magic == Data("fLaC".utf8) else { return nil }
+
+        var offset: UInt64 = 4
+        var info: (rate: Int, total: Int, minB: Int, maxB: Int)?
+        while true {
+            guard let header = try? handle.read(upToCount: 4), header.count == 4 else { return nil }
+            let b = [UInt8](header)
+            let isLast = b[0] & 0x80 != 0
+            let length = Int(b[1]) << 16 | Int(b[2]) << 8 | Int(b[3])
+            guard length < 64 * 1024 * 1024 else { return nil }
+
+            if b[0] & 0x7F == BlockType.streamInfo.rawValue, length >= 34 {
+                guard let body = try? handle.read(upToCount: length), body.count == length else { return nil }
+                let si = [UInt8](body)
+                info = (Int(si[10]) << 12 | Int(si[11]) << 4 | Int(si[12] >> 4),
+                        Int(si[13] & 0x0F) << 32 | Int(si[14]) << 24 | Int(si[15]) << 16
+                            | Int(si[16]) << 8 | Int(si[17]),
+                        Int(si[0]) << 8 | Int(si[1]), Int(si[2]) << 8 | Int(si[3]))
+            } else {
+                guard (try? handle.seek(toOffset: offset + 4 + UInt64(length))) != nil else { return nil }
+            }
+            offset += 4 + UInt64(length)
+            if isLast { break }
+        }
+        guard let info else { return nil }
+        return StreamInfo(sampleRate: info.rate, totalSamples: info.total,
+                          minBlock: info.minB, maxBlock: info.maxB, audioOffset: offset)
     }
 
     /// Read every metadata block plus the offset where audio frames begin.

@@ -18,6 +18,7 @@ func printUsage() {
       y1sync plan  <library-folder> [--device <name>] [--to <path>]
       y1sync sync  <library-folder> [--device <name>] [--to <path>] [--playlist <name>]
       y1sync undo  [--device <name>] [--to <path>] [--apply | --forget]
+      y1sync health [--device <name>] [--to <path>] [--library <folder>] [--repair] [--remove]
       y1sync playlists [--device <name>] [--to <path>] [--mood] [--tempo] [--genre]
 
     COMMANDS:
@@ -33,6 +34,12 @@ func printUsage() {
       enrich    Add lyrics and missing covers to what is already on the player.
       plan      Show what a sync would copy, without writing anything.
       sync      Copy missing tracks to the player.
+      health    Check every file already on the player: decodes the start and the
+                end of each one, so cut-off copies show up too. Lists broken
+                files with an intact copy from --library when there is one.
+                --repair replaces them from the library; --remove also removes
+                the ones with no replacement. Everything goes through the
+                undo quarantine, nothing is deleted outright.
       undo      Reverse the most recent tidy or dupes --apply. Nothing tidy or
                 dupes removes is ever really deleted right away — it moves
                 into a hidden quarantine folder on the device, and undo moves
@@ -87,6 +94,9 @@ struct Args {
     var fetchCovers = false
     var apply = false
     var forget = false
+    var library: String?
+    var repair = false
+    var removeBroken = false
     var wantMood = false
     var wantTempo = false
     var wantGenre = false
@@ -111,6 +121,9 @@ struct Args {
             case "--fetch-covers": fetchCovers = true; i += 1
             case "--apply": apply = true; i += 1
             case "--forget": forget = true; i += 1
+            case "--library": library = rest[safe: i + 1]; i += 2
+            case "--repair": repair = true; i += 1
+            case "--remove": removeBroken = true; i += 1
             case "--mood": wantMood = true; i += 1
             case "--tempo": wantTempo = true; i += 1
             case "--genre": wantGenre = true; i += 1
@@ -510,6 +523,35 @@ case "plan", "sync":
     } catch {
         fail(error.localizedDescription)
     }
+
+case "health":
+    let target = resolveTarget(args)
+    let onPlayer = await LibraryScanner().scan(root: target)
+    guard !onPlayer.isEmpty else { fail("no audio found on \(target.path)") }
+    var lib: [Track] = []
+    if let path = args.library {
+        lib = await LibraryScanner().scan(root: URL(fileURLWithPath: (path as NSString).expandingTildeInPath))
+    }
+    print("Checking \(onPlayer.count) file(s) on the player…")
+    let health = DeviceHealth()
+    let broken = await health.scan(deviceTracks: onPlayer, deviceRoot: target, library: lib) { done, total in
+        FileHandle.standardError.write(Data("\r  \(done)/\(total)   ".utf8))
+    }
+    FileHandle.standardError.write(Data("\r".utf8))
+    if broken.isEmpty { print("All \(onPlayer.count) files decode fine."); break }
+
+    print("\(broken.count) broken file(s):")
+    for b in broken {
+        print("  \(b.devicePath)")
+        print("      \(b.reasons.joined(separator: "; "))")
+        print("      " + (b.replacement.map { "can be replaced from \($0.sourceURL.path)" }
+                          ?? (args.library == nil ? "no library given (--library <folder>)" : "no intact copy in the library")))
+    }
+    guard args.repair else { print("\nNothing changed. Re-run with --repair to fix them."); break }
+    let out = health.fix(broken, deviceRoot: target, removeUnrepairable: args.removeBroken)
+    print("\nReplaced \(out.replaced), removed \(out.removed)."
+          + (out.failed.isEmpty ? "" : " Failed: \(out.failed.count)")
+          + " Run 'y1sync undo' to reverse.")
 
 case "undo":
     let target = resolveTarget(args)
