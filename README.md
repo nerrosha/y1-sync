@@ -86,7 +86,17 @@ firmware are very welcome** (see [Contributing](CONTRIBUTING.md)).
 
 ## Install
 
-Requires macOS 14 or newer and Xcode (or the Swift 6 toolchain) to build.
+**Download** the latest `Y1-Sync-<version>-macOS.zip` from [Releases](https://github.com/nerrosha/y1-sync/releases), unzip it and drag **Y1 Sync** to Applications. It runs on macOS 14 or newer, on Apple silicon and Intel.
+
+The app is not notarized (no paid Apple developer account), so the first time macOS says it cannot verify it. Either right-click the app → **Open** → **Open**, or run once:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Y1 Sync.app"
+```
+
+The release also has the `y1sync` command-line tool as a separate zip, and `SHA256SUMS.txt` to check the downloads.
+
+**Or build it yourself** (Xcode or the Swift 6 toolchain):
 
 ```bash
 git clone https://github.com/nerrosha/y1-sync.git
@@ -94,9 +104,6 @@ cd y1-sync
 ./build-app.sh
 open "build/Y1 Sync.app"
 ```
-
-`build-app.sh` produces the app and the `y1sync` command-line tool in `build/`. The app is
-not notarized, so on first launch macOS may ask you to confirm (right-click → Open).
 
 **The player does not mount until you enable USB storage on the player itself** — this is
 the usual reason nothing shows up.

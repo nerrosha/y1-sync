@@ -59,12 +59,7 @@ struct ContentView: View {
             default: break
             }
         }
-        // Remember settings between launches.
-        .onChange(of: model.playlistName) { model.saveSettings() }
-        .onChange(of: model.resizeArtwork) { model.saveSettings() }
-        .onChange(of: model.fetchLyrics) { model.saveSettings() }
-        .onChange(of: model.fetchCovers) { model.saveSettings() }
-        .onChange(of: model.autoCompare) { model.saveSettings() }
+        .modifier(SettingsSaver(model: model))
         .sheet(isPresented: $showAlbumPicker) {
             AlbumPickerView(model: model).themed()
         }
@@ -275,5 +270,20 @@ struct ContentView_Previews: PreviewProvider {
             ContentView().themed().frame(width: 980, height: 720)
                 .preferredColorScheme(.dark)
         }
+    }
+}
+
+/// Remember the toggles and text fields between launches. A separate modifier
+/// keeps `ContentView.body` short enough for every compiler to type-check.
+private struct SettingsSaver: ViewModifier {
+    let model: AppModel
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: model.playlistName) { model.saveSettings() }
+            .onChange(of: model.resizeArtwork) { model.saveSettings() }
+            .onChange(of: model.fetchLyrics) { model.saveSettings() }
+            .onChange(of: model.fetchCovers) { model.saveSettings() }
+            .onChange(of: model.autoCompare) { model.saveSettings() }
     }
 }

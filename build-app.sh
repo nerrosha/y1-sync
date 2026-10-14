@@ -14,12 +14,26 @@ BUNDLE_ID="local.y1sync"
 OUT_DIR="${1:-build}"
 APP="$OUT_DIR/$APP_NAME.app"
 
-echo "Building ($CONFIG)…"
-swift build -c "$CONFIG" --product Y1SyncApp
-swift build -c "$CONFIG" --product y1sync
+# Optional switches (used by release.sh):
+#   UNIVERSAL=1   build for both Apple silicon and Intel
+#   SKIP_SOUNDS=1 leave the third-party UI sounds out of the bundle
+#   VERSION=1.2   version shown in the app's Info.plist
+VERSION="${VERSION:-1.0}"
+ARCH_FLAGS=()
+PRODUCTS_DIR=".build/$CONFIG"
+if [ "${UNIVERSAL:-0}" = "1" ]; then
+    ARCH_FLAGS=(--arch arm64 --arch x86_64)
+fi
 
-BIN=".build/$CONFIG/Y1SyncApp"
-CLI=".build/$CONFIG/y1sync"
+echo "Building ($CONFIG)…"
+swift build -c "$CONFIG" ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --product Y1SyncApp
+swift build -c "$CONFIG" ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --product y1sync
+
+if [ "${UNIVERSAL:-0}" = "1" ]; then
+    PRODUCTS_DIR="$(swift build -c "$CONFIG" "${ARCH_FLAGS[@]}" --show-bin-path)"
+fi
+BIN="$PRODUCTS_DIR/Y1SyncApp"
+CLI="$PRODUCTS_DIR/y1sync"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -34,6 +48,10 @@ for dir in Fonts Sounds; do
         cp -R "Resources/$dir" "$APP/Contents/Resources/$dir"
     fi
 done
+if [ "${SKIP_SOUNDS:-0}" = "1" ]; then
+    rm -f "$APP"/Contents/Resources/Sounds/*.mp3 "$APP"/Contents/Resources/Sounds/*.wav \
+          "$APP"/Contents/Resources/Sounds/*.aif "$APP"/Contents/Resources/Sounds/*.m4a
+fi
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -43,8 +61,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleName</key>            <string>$APP_NAME</string>
     <key>CFBundleDisplayName</key>     <string>$APP_NAME</string>
     <key>CFBundleIdentifier</key>      <string>$BUNDLE_ID</string>
-    <key>CFBundleVersion</key>         <string>1.0</string>
-    <key>CFBundleShortVersionString</key><string>1.0</string>
+    <key>CFBundleVersion</key>         <string>$VERSION</string>
+    <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
     <key>CFBundleExecutable</key>      <string>Y1SyncApp</string>
     <key>CFBundleIconFile</key>        <string>AppIcon</string>

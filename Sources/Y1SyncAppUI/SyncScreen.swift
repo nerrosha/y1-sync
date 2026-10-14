@@ -243,14 +243,20 @@ struct SyncScreen: View {
         }
     }
 
+    private static func reportSummary(_ report: SyncReport) -> String {
+        var text = "Will add \(countLabel(report.added, "track"))"
+        if report.replaced > 0 { text += ", replace \(report.replaced)" }
+        text += " (\(ByteFormat.string(report.bytes))). "
+        text += "\(report.unchanged) already there stay as they are. "
+        text += "Nothing on the player is deleted."
+        return text
+    }
+
     /// "What will change", per album — nothing is written until Sync.
     private func albumReport(_ plan: SyncPlan) -> some View {
         let report = SyncReport(plan: plan)
         return VStack(alignment: .leading, spacing: 8) {
-            Text("Will add \(countLabel(report.added, "track"))"
-                 + (report.replaced > 0 ? ", replace \(report.replaced)" : "")
-                 + " (\(ByteFormat.string(report.bytes))). \(report.unchanged) already there stay as they are. "
-                 + "Nothing on the player is deleted.")
+            Text(Self.reportSummary(report))
                 .font(.system(size: 14, weight: .semibold))
                 .fixedSize(horizontal: false, vertical: true)
             let renamed = plan.actions.filter { !$0.track.tagEdits.isEmpty }.count

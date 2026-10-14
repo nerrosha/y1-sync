@@ -9,3 +9,4 @@ check-log.txt
 Resources/Sounds/*.mp3
 Resources/Sounds/*.wav
 Resources/Sounds/*.aif
+dist/
