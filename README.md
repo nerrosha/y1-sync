@@ -179,9 +179,9 @@ in progress. The Sync tab is three numbered boxes: 1 Player, 2 Music, 3 Copy.
 Everything is built from a small design system in `Sources/Y1SyncAppUI/Theme/`
 (palette tokens, `PixelBox`, `PixelButtonStyle`, `Notice`, `PixelTabBar`, …).
 
-- Font (SIL OFL, bundled, Cyrillic): Pixelify Sans — `Resources/Fonts`. Lists, paths
-  and help text use the system font.
-- Interface sounds are optional: put your own files in `Resources/Sounds` (see `Resources/Sounds/README.txt`). Without them the app is silent.
+- Text uses the system font; the pixel look comes from the borders and corners.
+  Pixelify Sans (SIL OFL) is bundled in `Resources/Fonts`.
+- Optional UI sounds go in `Resources/Sounds` (mute with the speaker button).
 - No animations; colour is never the only signal (every status line has an icon).
 
 Double-click `check.command` to build the app and run the tests in one go.
