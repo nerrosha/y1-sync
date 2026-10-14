@@ -9,14 +9,26 @@ public struct SyncAction: Sendable, Hashable {
         case replace
     }
 
+    /// Why the file is planned — shown to the user instead of a bare "replace".
+    public enum Reason: Sendable, Hashable {
+        /// Not on the player yet.
+        case new
+        /// The copy on the player is shorter than the source: an interrupted copy.
+        case truncated
+        /// Present, but its audio differs from the source.
+        case changed
+    }
+
     public var kind: Kind
     public var track: Track
     public var devicePath: String
+    public var reason: Reason
 
-    public init(kind: Kind, track: Track, devicePath: String) {
+    public init(kind: Kind, track: Track, devicePath: String, reason: Reason? = nil) {
         self.kind = kind
         self.track = track
         self.devicePath = devicePath
+        self.reason = reason ?? (kind == .copy ? .new : .changed)
     }
 }
 
@@ -46,10 +58,14 @@ public struct SyncPlan: Sendable {
 public struct DeviceFile: Sendable, Hashable {
     public var path: String
     public var size: Int64
+    /// Where the file lives, so the planner can read its audio size when the
+    /// total size disagrees with the source. Nil in tests and for plain lists.
+    public var url: URL?
 
-    public init(path: String, size: Int64) {
+    public init(path: String, size: Int64, url: URL? = nil) {
         self.path = path
         self.size = size
+        self.url = url
     }
 }
 
@@ -62,14 +78,21 @@ public struct SyncPlanner: Sendable {
 
     /// Compare the library against the device contents.
     ///
-    /// Matching is by destination path and file size. Size is a deliberately
-    /// cheap proxy for "same file": hashing every track would mean reading the
-    /// entire library and the entire device on every sync, which on a
-    /// USB 2.0 mass-storage player costs minutes for no practical gain.
+    /// Matching is by destination path and size. Size is a deliberately cheap
+    /// proxy for "same file": hashing every track would mean reading the whole
+    /// library and the whole device on every sync, which on a USB 2.0
+    /// mass-storage player costs minutes for no practical gain.
+    ///
+    /// Total size alone is not enough: tags are rewritten on the way across
+    /// (cover shrunk, album artist corrected) and Lyrics / Find art embed
+    /// covers on the player later, so a correctly synced file is almost never
+    /// the same size as its source. When the totals differ, the audio payload
+    /// sizes (the file minus its metadata) are compared instead — the audio is
+    /// never touched, so equal payloads mean "already there".
     public func plan(library: [Track], deviceFiles: [DeviceFile]) -> SyncPlan {
-        var sizeByPath: [String: Int64] = [:]
+        var fileByPath: [String: DeviceFile] = [:]
         for file in deviceFiles {
-            sizeByPath[FATName.foldedKey(file.path)] = file.size
+            fileByPath[FATName.foldedKey(file.path)] = file
         }
 
         var actions: [SyncAction] = []
@@ -85,11 +108,16 @@ public struct SyncPlanner: Sendable {
             // reported as collisions so the user can fix the tags.
             guard claimedBy[key]?.count == 1 else { continue }
 
-            if let existing = sizeByPath[key] {
-                if existing == track.fileSize {
+            if let existing = fileByPath[key] {
+                let audio = Self.audioSizes(existing, track)
+                if existing.size == track.fileSize || (audio != nil && audio!.device == audio!.source) {
                     upToDate.append(track)
                 } else {
-                    actions.append(SyncAction(kind: .replace, track: track, devicePath: path))
+                    // Compare payloads when we can: a smaller total can just be
+                    // a shrunk cover, but a smaller payload is a cut-off copy.
+                    let short = audio.map { $0.device < $0.source } ?? (existing.size < track.fileSize)
+                    actions.append(SyncAction(kind: .replace, track: track, devicePath: path,
+                                              reason: short ? .truncated : .changed))
                 }
             } else {
                 actions.append(SyncAction(kind: .copy, track: track, devicePath: path))
@@ -98,5 +126,14 @@ public struct SyncPlanner: Sendable {
 
         let collisions = claimedBy.filter { $0.value.count > 1 }
         return SyncPlan(actions: actions, upToDate: upToDate, collisions: collisions)
+    }
+
+    /// Audio payload sizes of the copy on the player and of its source, when
+    /// both are known (MP3 and FLAC only).
+    static func audioSizes(_ onDevice: DeviceFile, _ track: Track) -> (device: Int64, source: Int64)? {
+        guard let url = onDevice.url,
+              let theirs = AudioSize.of(url, size: onDevice.size),
+              let ours = AudioSize.of(track.sourceURL, size: track.fileSize) else { return nil }
+        return (theirs, ours)
     }
 }

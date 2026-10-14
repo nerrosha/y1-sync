@@ -57,7 +57,7 @@ public struct SyncEngine: Sendable {
             let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
             guard values?.isRegularFile == true else { continue }
             let size = values?.fileSize.map(Int64.init) ?? 0
-            out.append(DeviceFile(path: devicePath(of: url, root: root), size: size))
+            out.append(DeviceFile(path: devicePath(of: url, root: root), size: size, url: url))
         }
         return out
     }

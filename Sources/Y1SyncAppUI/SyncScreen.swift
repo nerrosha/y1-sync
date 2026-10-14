@@ -267,6 +267,15 @@ struct SyncScreen: View {
         }
     }
 
+    /// Why a file that is already on the player is being copied again.
+    static func reasonText(_ reason: SyncAction.Reason) -> String? {
+        switch reason {
+        case .new: nil
+        case .truncated: "cut off — will be replaced"
+        case .changed: "differs from the library"
+        }
+    }
+
     private func fileList(_ plan: SyncPlan) -> some View {
         LazyVStack(alignment: .leading, spacing: 2) {
             ForEach(plan.actions.prefix(200), id: \.devicePath) { action in
@@ -280,6 +289,11 @@ struct SyncScreen: View {
                     Text(action.devicePath)
                         .font(.system(size: 11, design: .monospaced))
                         .lineLimit(1).truncationMode(.head)
+                    Spacer(minLength: 4)
+                    if let why = Self.reasonText(action.reason) {
+                        Text(why).font(.system(size: 11)).foregroundStyle(p.warn)
+                            .lineLimit(1).fixedSize()
+                    }
                 }
                 .accessibilityElement(children: .combine)
             }
