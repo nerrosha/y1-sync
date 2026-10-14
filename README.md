@@ -36,10 +36,10 @@ library to the player and cleans up what is already there.
     <td align="center"><sub><b>Listening</b> — what you really play, from the player's own log</sub></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="assets/screenshots/device-fix.png" alt="Device tab: tidy, with renames that would be refused flagged in advance" width="50%"></td>
+    <td colspan="2"><img src="assets/screenshots/device-fix.png" alt="Device tab: tidy the card and keep the player's song list current" width="50%"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><sub><b>Device → Fix</b> — tidy the card; problems are flagged before you press the button</sub></td>
+    <td colspan="2" align="center"><sub><b>Device → Fix</b> — tidy the card, clear junk, keep the player's own song list in step</sub></td>
   </tr>
 </table>
 
