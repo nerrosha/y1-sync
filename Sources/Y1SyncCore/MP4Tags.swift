@@ -55,6 +55,57 @@ public enum MP4Tags {
         Data(put32(UInt32(body.count + 8)) + type) + body
     }
 
+    // MARK: Audio format
+
+    /// Codec ("ALAC", "AAC"…), sample rate and bit depth from the sample
+    /// description (`stsd`) of the first audio track.
+    public static func audioFormat(_ url: URL) -> (codec: String, sampleRate: Int?, bitDepth: Int?)? {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+              let top = atoms(in: data, from: 0, to: data.count),
+              let moov = top.first(where: { $0.type == Array("moov".utf8) }),
+              let stsd = find(["trak", "mdia", "minf", "stbl", "stsd"], in: data, from: moov.bodyStart, to: moov.end)
+        else { return nil }
+        // stsd: version/flags (4), entry count (4), then the first entry.
+        let e = stsd.bodyStart + 8
+        guard e + 36 <= stsd.end else { return nil }
+        let typeBytes = data.subdata(in: (data.startIndex + e + 4) ..< (data.startIndex + e + 8))
+        let type = String(data: typeBytes, encoding: .ascii) ?? ""
+        func u16(_ i: Int) -> Int {
+            let hi = Int(data[data.startIndex + i]) << 8
+            return hi | Int(data[data.startIndex + i + 1])
+        }
+        var rate: Int? = u16(e + 32)   // 16.16 fixed point: integer part
+        var bits: Int? = u16(e + 26)
+        let codec: String
+        switch type {
+        case "alac":
+            codec = "ALAC"
+            // The real values are in the `alac` configuration box after the entry header.
+            let entryEnd = min(stsd.end, e + Int(be32(data, e)))
+            let alacType = Array("alac".utf8)
+            let children = atoms(in: data, from: e + 36, to: entryEnd) ?? []
+            if let cfg = children.first(where: { $0.type == alacType }),
+               cfg.end - cfg.bodyStart >= 28 {
+                bits = Int(data[data.startIndex + cfg.bodyStart + 9])
+                rate = Int(be32(data, cfg.bodyStart + 24))
+            }
+        case "mp4a": codec = "AAC"; bits = nil
+        default: codec = type.uppercased()
+        }
+        if let r = rate, r == 0 { rate = nil }
+        return (codec, rate, bits)
+    }
+
+    /// Walk a chain of nested atoms; for `trak` take the first one that has the rest.
+    private static func find(_ path: [String], in data: Data, from: Int, to: Int) -> Atom? {
+        guard let name = path.first, let kids = atoms(in: data, from: from, to: to) else { return nil }
+        for k in kids where String(decoding: k.type, as: UTF8.self) == name {
+            if path.count == 1 { return k }
+            if let hit = find(Array(path.dropFirst()), in: data, from: k.bodyStart, to: k.end) { return hit }
+        }
+        return nil
+    }
+
     // MARK: Read
 
     public static func read(_ url: URL, fields: [String]) -> [String: String] {

@@ -1,4 +1,5 @@
 import Foundation
+import Y1SyncCore
 
 /// Everything the app remembers between launches.
 ///
@@ -20,6 +21,9 @@ enum AppSettings {
         static let autoCompare = "compareWhenPlayerConnects"
         static let removeJunk = "tidyRemovesJunk"
         static let sounds = "soundsEnabled"
+        static let playerMaxRate = "playerMaxSampleRate"
+        static let playerMaxBits = "playerMaxBitDepth"
+        static let playerAllowALAC = "playerAllowALAC"
     }
 
     /// The remembered library folder, but only if it is still there — a
@@ -46,6 +50,22 @@ enum AppSettings {
     static var playlistName: String {
         get { defaults.string(forKey: Key.playlistName) ?? "" }
         set { defaults.set(newValue, forKey: Key.playlistName) }
+    }
+
+    /// Formats the user found the player cannot play (nothing limited by default).
+    static var playerLimits: PlayerLimits {
+        get {
+            let rate = defaults.integer(forKey: Key.playerMaxRate)
+            let bits = defaults.integer(forKey: Key.playerMaxBits)
+            return PlayerLimits(maxSampleRate: rate > 0 ? rate : nil,
+                                maxBitDepth: bits > 0 ? bits : nil,
+                                allowALAC: bool(Key.playerAllowALAC, default: true))
+        }
+        set {
+            defaults.set(newValue.maxSampleRate ?? 0, forKey: Key.playerMaxRate)
+            defaults.set(newValue.maxBitDepth ?? 0, forKey: Key.playerMaxBits)
+            defaults.set(newValue.allowALAC, forKey: Key.playerAllowALAC)
+        }
     }
 
     static var resizeArtwork: Bool {

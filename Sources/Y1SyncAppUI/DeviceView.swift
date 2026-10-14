@@ -71,6 +71,7 @@ struct DeviceView: View {
                             similarArtistsSection
                             similarAlbumsSection
                             healthSection
+                            formatsSection
                         case .extras:
                             enrichSection
                             smartPlaylistsSection
@@ -384,6 +385,67 @@ struct DeviceView: View {
                     }
                     .padding(.vertical, 4)
                 }
+            }
+        }
+    }
+
+    // MARK: - Formats
+
+    private var formatsSection: some View {
+        let flagged = model.tracks.filter { model.limits.problem(for: $0) != nil }.count
+        return PixelBox(title: "Formats on the player") {
+            Text("Which formats and qualities are on the player. If some files will not play, "
+                 + "set the highest quality it handles: files above it are flagged under "
+                 + "Broken files, replaced from your library when a copy within the limit exists, "
+                 + "and skipped on sync. Nothing is converted.")
+                .font(.system(size: 13)).foregroundStyle(p.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+
+            let summary = PlayerLimits.summary(of: model.tracks)
+            VStack(spacing: 4) {
+                ForEach(Array(summary.prefix(8)), id: \.label) { row in
+                    ListRow(selected: false) {
+                        Text(row.label).font(.system(size: 13))
+                        Spacer(minLength: 6)
+                        Text(countLabel(row.count, "song")).font(.system(size: 13)).opacity(0.8)
+                    }
+                }
+                if summary.count > 8 {
+                    Text("… and \(summary.count - 8) more formats")
+                        .font(.system(size: 12)).foregroundStyle(p.inkSoft)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Menu {
+                    Button("No limit") { model.limits.maxSampleRate = nil }
+                    ForEach([44_100, 48_000, 96_000, 192_000], id: \.self) { hz in
+                        Button("Up to \(PlayerLimits.kHz(hz))") { model.limits.maxSampleRate = hz }
+                    }
+                } label: {
+                    Text("Sample rate: " + (model.limits.maxSampleRate.map { "≤ " + PlayerLimits.kHz($0) } ?? "any"))
+                }
+                .menuStyle(.button).buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+
+                Menu {
+                    Button("No limit") { model.limits.maxBitDepth = nil }
+                    ForEach([16, 24], id: \.self) { b in
+                        Button("Up to \(b)-bit") { model.limits.maxBitDepth = b }
+                    }
+                } label: {
+                    Text("Bit depth: " + (model.limits.maxBitDepth.map { "≤ \($0)" } ?? "any"))
+                }
+                .menuStyle(.button).buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+
+                PixelToggle("Allow ALAC", isOn: $model.limits.allowALAC).fixedSize()
+                Spacer(minLength: 0)
+            }
+
+            if flagged > 0 {
+                Notice(kind: .warn, text: "\(countLabel(flagged, "song")) above these limits. "
+                       + "Press “Check files” to see them and replace what can be replaced.")
+            } else if !model.limits.isUnlimited {
+                Notice(kind: .good, text: "Everything on the player is within these limits.")
             }
         }
     }

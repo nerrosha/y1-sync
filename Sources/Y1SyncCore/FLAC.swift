@@ -167,6 +167,7 @@ extension FLAC {
 
     public struct StreamInfo: Sendable {
         public var sampleRate: Int
+        public var bitsPerSample: Int = 0
         public var totalSamples: Int
         public var minBlock: Int
         public var maxBlock: Int
@@ -188,7 +189,7 @@ extension FLAC {
         guard let magic = try? handle.read(upToCount: 4), magic == Data("fLaC".utf8) else { return nil }
 
         var offset: UInt64 = 4
-        var info: (rate: Int, total: Int, minB: Int, maxB: Int)?
+        var info: (rate: Int, bits: Int, total: Int, minB: Int, maxB: Int)?
         while true {
             guard let header = try? handle.read(upToCount: 4), header.count == 4 else { return nil }
             let b = [UInt8](header)
@@ -200,6 +201,7 @@ extension FLAC {
                 guard let body = try? handle.read(upToCount: length), body.count == length else { return nil }
                 let si = [UInt8](body)
                 info = (Int(si[10]) << 12 | Int(si[11]) << 4 | Int(si[12] >> 4),
+                        (Int(si[12] & 1) << 4 | Int(si[13] >> 4)) + 1,
                         Int(si[13] & 0x0F) << 32 | Int(si[14]) << 24 | Int(si[15]) << 16
                             | Int(si[16]) << 8 | Int(si[17]),
                         Int(si[0]) << 8 | Int(si[1]), Int(si[2]) << 8 | Int(si[3]))
@@ -210,7 +212,7 @@ extension FLAC {
             if isLast { break }
         }
         guard let info else { return nil }
-        return StreamInfo(sampleRate: info.rate, totalSamples: info.total,
+        return StreamInfo(sampleRate: info.rate, bitsPerSample: info.bits, totalSamples: info.total,
                           minBlock: info.minB, maxBlock: info.maxB, audioOffset: offset)
     }
 

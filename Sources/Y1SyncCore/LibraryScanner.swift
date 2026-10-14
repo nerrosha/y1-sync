@@ -50,12 +50,22 @@ public struct LibraryScanner: Sendable {
 
             // The length is in STREAMINFO; asking AVFoundation for it opens the
             // file a second time, which is slow on a USB player.
-            if let seconds = FLAC.streamInfo(url)?.duration {
+            track.codec = "FLAC"
+            let info = FLAC.streamInfo(url)
+            track.sampleRate = info?.sampleRate
+            track.bitDepth = info?.bitsPerSample
+            if let seconds = info?.duration {
                 track.durationSeconds = seconds
             } else if let duration = try? await AVURLAsset(url: url).load(.duration), duration.isNumeric {
                 track.durationSeconds = CMTimeGetSeconds(duration)
             }
             return track
+        }
+
+        if ["m4a", "mp4", "m4b"].contains(track.fileExtension), let f = MP4Tags.audioFormat(url) {
+            track.codec = f.codec; track.sampleRate = f.sampleRate; track.bitDepth = f.bitDepth
+        } else {
+            track.codec = track.fileExtension.uppercased()
         }
 
         let asset = AVURLAsset(url: url)
@@ -130,11 +140,27 @@ public struct LibraryScanner: Sendable {
         return track
     }
 
-    public func scan(root: URL) async -> [Track] {
+    /// With a `cache`, files whose size and modification time are unchanged
+    /// since the last scan are not read again.
+    public func scan(root: URL, cache: ScanCache? = nil,
+                     progress: (@Sendable (Int, Int) -> Void)? = nil) async -> [Track] {
         var tracks: [Track] = []
-        for url in findAudioFiles(under: root) {
-            tracks.append(await readTrack(at: url))
+        let urls = findAudioFiles(under: root)
+        for (i, url) in urls.enumerated() {
+            if let cache, let stamp = ScanCache.stamp(of: url) {
+                if let hit = cache.track(for: url, stamp: stamp) {
+                    tracks.append(hit)
+                } else {
+                    let t = await readTrack(at: url)
+                    cache.store(t, stamp: stamp)
+                    tracks.append(t)
+                }
+            } else {
+                tracks.append(await readTrack(at: url))
+            }
+            progress?(i + 1, urls.count)
         }
+        cache?.save(keeping: urls)
         return tracks
     }
 

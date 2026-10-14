@@ -21,6 +21,7 @@ func printUsage() {
       y1sync artists [--device <name>] [--to <path>]
       y1sync albums [--device <name>] [--to <path>]
       y1sync library [--device <name>] [--to <path>] [--apply]
+      y1sync formats [--device <name>] [--to <path>]
       y1sync health [--device <name>] [--to <path>] [--library <folder>] [--repair] [--remove]
       y1sync playlists [--device <name>] [--to <path>] [--mood] [--tempo] [--genre]
 
@@ -45,6 +46,7 @@ func printUsage() {
                 card. The player shows songs from that list, so tracks copied after
                 its last scan are invisible on it. --apply adds the missing tracks
                 and drops entries for files that are gone (a backup is kept).
+      formats   List the audio formats on the player (codec, bit depth, sample rate).
       health    Check every file already on the player: decodes the start and the
                 end of each one, so cut-off copies show up too. Lists broken
                 files with an intact copy from --library when there is one.
@@ -572,6 +574,15 @@ case "library":
     guard args.apply else { print("\nNothing changed. Re-run with --apply to update the list."); break }
     let r = try PlayerLibraryCache.sync(deviceRoot: target, deviceTracks: onCard)
     print("\nUpdated the player's song list: \(r.added) added, \(r.removed) removed. Backup: \(PlayerLibraryCache.fileName).y1sync-backup")
+
+case "formats":
+    let target = resolveTarget(args)
+    let cache = ScanCache(root: target)
+    let start = Date()
+    let found = await LibraryScanner().scan(root: target, cache: cache)
+    guard !found.isEmpty else { fail("no audio found on \(target.path)") }
+    print(String(format: "%d file(s) read in %.1fs", found.count, Date().timeIntervalSince(start)))
+    for row in PlayerLimits.summary(of: found) { print(String(format: "%5d  %@", row.count, row.label)) }
 
 case "health":
     let target = resolveTarget(args)

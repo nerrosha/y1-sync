@@ -22,13 +22,15 @@ public enum TrackIssue: Sendable, Hashable {
     case undecodableEmbeddedArt(String)
     /// Tags the browser needs in order to file the track sensibly.
     case missingTags([String])
+    /// Outside the limits the user set for the player (see `PlayerLimits`).
+    case unsupportedByPlayer(String)
 
     /// Blocking issues mean the file should not be copied at all — it would
     /// occupy space and fail to play. Warnings are worth fixing but harmless.
     public var isBlocking: Bool {
         switch self {
         case .unreadable, .emptyFile, .noAudioTrack, .zeroDuration, .undecodable,
-             .suspiciouslyShort:
+             .suspiciouslyShort, .unsupportedByPlayer:
             return true
         case .oversizedEmbeddedArt, .undecodableEmbeddedArt, .missingTags:
             return false
@@ -51,6 +53,8 @@ public enum TrackIssue: Sendable, Hashable {
             return "embedded cover is \(kind); the player only decodes embedded JPEG"
         case .missingTags(let fields):
             return "missing \(fields.joined(separator: ", "))"
+        case .unsupportedByPlayer(let why):
+            return "the player may not play it — \(why)"
         }
     }
 }
@@ -100,13 +104,17 @@ public struct TrackHealth: Sendable {
     /// Only decide playability: skip cover-art and missing-tag findings, which
     /// cost extra reads and don't matter when auditing files already on the player.
     public var audioOnly: Bool
+    /// Formats the player is known (to the user) not to play.
+    public var limits: PlayerLimits
 
     public init(maxEmbeddedArtBytes: Int = 256 * 1024,
                 maxEmbeddedArtPixels: Int = 1000,
                 deepCheck: Bool = true,
                 minimumDuration: Double = 1.0,
                 checkTail: Bool = false,
-                audioOnly: Bool = false) {
+                audioOnly: Bool = false,
+                limits: PlayerLimits = .none) {
+        self.limits = limits
         self.checkTail = checkTail
         self.audioOnly = audioOnly
         self.maxEmbeddedArtBytes = maxEmbeddedArtBytes
@@ -177,6 +185,10 @@ public struct TrackHealth: Sendable {
 
         if track.fileSize == 0 {
             return TrackReport(track: track, issues: [.emptyFile])
+        }
+
+        if let why = limits.problem(for: track) {
+            return TrackReport(track: track, issues: [.unsupportedByPlayer(why)])
         }
 
         let asset = AVURLAsset(url: track.sourceURL)
@@ -279,6 +291,36 @@ public struct TrackHealth: Sendable {
     }
 
     /// Check a whole library, in parallel batches.
+    /// Identifies which checks were run, so a cached "fine" is only reused
+    /// for the same checks.
+    public var signature: String {
+        "v1|art\(maxEmbeddedArtPixels)/\(maxEmbeddedArtBytes)|deep\(deepCheck)|tail\(checkTail)"
+            + "|audio\(audioOnly)|min\(minimumDuration)"
+            + "|rate\(limits.maxSampleRate ?? 0)|bits\(limits.maxBitDepth ?? 0)|alac\(limits.allowALAC)"
+    }
+
+    /// With a `cache`, files that passed these exact checks and have not
+    /// changed since are not opened again. Only files with no findings at all
+    /// are remembered, so warnings and problems are always re-evaluated.
+    public func checkAll(_ tracks: [Track], cache: ScanCache?) async -> [TrackReport] {
+        guard let cache else { return await checkAll(tracks) }
+        let sig = signature
+        var known: [TrackReport] = []
+        var todo: [Track] = []
+        for t in tracks {
+            if let art = cache.healthyArt(for: t, signature: sig) {
+                known.append(TrackReport(track: t, issues: [], hasEmbeddedArt: art))
+            } else { todo.append(t) }
+        }
+        let fresh = await checkAll(todo)
+        for r in fresh where r.issues.isEmpty {
+            cache.markHealthy(r.track, signature: sig, hasEmbeddedArt: r.hasEmbeddedArt)
+        }
+        cache.save()
+        let position = Dictionary(uniqueKeysWithValues: tracks.enumerated().map { ($1.sourceURL, $0) })
+        return (known + fresh).sorted { (position[$0.track.sourceURL] ?? 0) < (position[$1.track.sourceURL] ?? 0) }
+    }
+
     public func checkAll(_ tracks: [Track]) async -> [TrackReport] {
         var reports: [TrackReport] = []
         reports.reserveCapacity(tracks.count)

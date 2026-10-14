@@ -41,6 +41,10 @@ final class DeviceModel {
 
     var maxArtDimension = 500
     var removeJunk = AppSettings.removeJunk
+    /// Formats the user told the app the player cannot play.
+    var limits = AppSettings.playerLimits {
+        didSet { AppSettings.playerLimits = limits; brokenFiles = nil }
+    }
 
     private(set) var deviceRoot: URL?
     /// The one operation that can currently be undone, if any.
@@ -82,8 +86,14 @@ final class DeviceModel {
         status = "Reading the player…"
         progress = 0
 
-        let found = await Task.detached(priority: .userInitiated) {
-            await LibraryScanner().scan(root: root)
+        let cache = ScanCache(root: root)
+        let found = await Task.detached(priority: .userInitiated) { [weak self] in
+            await LibraryScanner().scan(root: root, cache: cache) { done, total in
+                Task { @MainActor in
+                    self?.progress = total > 0 ? Double(done) / Double(total) : 1
+                    self?.status = "Reading the player… \(done) of \(total)"
+                }
+            }
         }.value
         tracks = found
 
@@ -202,8 +212,21 @@ final class DeviceModel {
         status = "Checking \(countLabel(tracks.count, "file"))…"
         let found = tracks
         let library = libraryTracks
+        let health = TrackHealth(checkTail: true, audioOnly: true, limits: limits)
+        let cache = ScanCache(root: root)
+        let signature = health.signature
+        let check: @Sendable (Track) async -> TrackReport = { t in
+            // Unchanged files that passed the same checks last time are not opened again.
+            if let art = cache.healthyArt(for: t, signature: signature) {
+                return TrackReport(track: t, issues: [], hasEmbeddedArt: art)
+            }
+            let r = await health.check(t)
+            if r.issues.isEmpty { cache.markHealthy(t, signature: signature, hasEmbeddedArt: r.hasEmbeddedArt) }
+            return r
+        }
         let result = await Task.detached(priority: .userInitiated) { [weak self] in
-            await DeviceHealth().scan(deviceTracks: found, deviceRoot: root, library: library) { done, total in
+            defer { cache.save() }
+            return await DeviceHealth(check: check).scan(deviceTracks: found, deviceRoot: root, library: library) { done, total in
                 Task { @MainActor in
                     self?.progress = total > 0 ? Double(done) / Double(total) : 1
                     self?.status = "Checking \(done) of \(total)…"

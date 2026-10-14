@@ -21,6 +21,11 @@ public struct Track: Sendable, Hashable {
     /// (each mood is scored by an independent classifier, so a track can
     /// genuinely land positive on more than one, or none).
     public var moods: [String]
+    /// What the audio is: "FLAC", "ALAC", "AAC", "MP3"… plus its sample rate
+    /// and bit depth where the file says (nil for lossy formats that don't).
+    public var codec: String?
+    public var sampleRate: Int?
+    public var bitDepth: Int?
 
     public init(
         sourceURL: URL,
@@ -35,7 +40,10 @@ public struct Track: Sendable, Hashable {
         fileSize: Int64 = 0,
         genre: String? = nil,
         bpm: Double? = nil,
-        moods: [String] = []
+        moods: [String] = [],
+        codec: String? = nil,
+        sampleRate: Int? = nil,
+        bitDepth: Int? = nil
     ) {
         self.sourceURL = sourceURL
         self.title = title
@@ -50,6 +58,9 @@ public struct Track: Sendable, Hashable {
         self.genre = genre
         self.bpm = bpm
         self.moods = moods
+        self.codec = codec
+        self.sampleRate = sampleRate
+        self.bitDepth = bitDepth
     }
 
     /// Tags are frequently missing or blank on files that came from odd

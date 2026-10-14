@@ -291,8 +291,9 @@ final class AppModel {
         progressLabel = "Reading tags…"
 
         let scanner = self.scanner
+        let libraryCache = ScanCache(root: library)
         let found = await Task.detached(priority: .userInitiated) {
-            await scanner.scan(root: library)
+            await scanner.scan(root: library, cache: libraryCache)
         }.value
 
         guard !found.isEmpty else {
@@ -312,8 +313,10 @@ final class AppModel {
         // would otherwise occupy space on the player and fail to play.
         progressLabel = "Checking files…"
         let limit = maxArtDimension
+        let limits = AppSettings.playerLimits
         let checked = await Task.detached(priority: .userInitiated) {
-            await TrackHealth(maxEmbeddedArtPixels: limit).checkAll(found)
+            await TrackHealth(maxEmbeddedArtPixels: limit, limits: limits)
+                .checkAll(found, cache: libraryCache)
         }.value
         reports = checked
 
