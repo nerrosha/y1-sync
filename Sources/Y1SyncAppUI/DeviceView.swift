@@ -26,7 +26,9 @@ struct DeviceView: View {
     @State private var section: Section = .fix
     @Environment(\.palette) private var p
 
-    private enum Section: Hashable { case fix, extras }
+    private enum Section: Hashable { case fix, listening, extras }
+    @State private var freeTargetGB = 20
+    @State private var confirmFree = false
 
     /// Things on the player that want attention, for the Fix tab's badge.
     private func issueCount(_ plan: TidyPlan) -> Int {
@@ -60,6 +62,7 @@ struct DeviceView: View {
 
             if model.hasScanned, let plan = model.tidyPlan {
                 PixelTabBar(tabs: [PixelTab(id: Section.fix, title: "Fix", badge: issueCount(plan)),
+                                   PixelTab(id: Section.listening, title: "Listening"),
                                    PixelTab(id: Section.extras, title: "Extras")],
                             selection: $section, shortcuts: false)
                 ScrollView {
@@ -73,6 +76,8 @@ struct DeviceView: View {
                             mergeRulesSection
                             healthSection
                             formatsSection
+                        case .listening:
+                            listeningSections
                         case .extras:
                             enrichSection
                             smartPlaylistsSection
@@ -100,7 +105,7 @@ struct DeviceView: View {
         }
         // The confirm overlay only blocks clicks; this also stops ⌘R/⌘Z and Tab focus
         // from reaching the controls behind it (a rescan would swap the plan under it).
-        .disabled(confirmTidy || confirmForget)
+        .disabled(confirmTidy || confirmForget || confirmFree)
         .foregroundStyle(p.ink)
         .pixelConfirm(isPresented: $confirmTidy,
                       title: "Tidy the player",
@@ -139,6 +144,21 @@ struct DeviceView: View {
             UISound.confirm.play()
             let name = chosenArtist[group.id] ?? group.suggested
             Task { await model.mergeArtists(group, into: name); UISound.success.play() }
+        }
+        .pixelConfirm(isPresented: $confirmFree,
+                      title: "Free up space",
+                      message: "Moves \(countLabel(model.removalPicks.count, "album")) "
+                          + "(\(ByteFormat.string(model.removalBytes))) into the hidden undo folder on the player and "
+                          + "stops sync from copying them back. Your library is not touched, and Undo on this "
+                          + "tab brings everything back until the next cleanup.",
+                      confirmTitle: "Remove") {
+            UISound.confirm.play()
+            Task {
+                let r = await model.removePickedAlbums()
+                model.status = "Removed \(countLabel(r.albums, "album")) (\(ByteFormat.string(r.freed))) from the player."
+                    + (r.failed > 0 ? " \(r.failed) files could not be moved." : " Undo is above.")
+                (r.failed > 0 ? UISound.error : UISound.success).play()
+            }
         }
         .pixelConfirm(isPresented: $confirmRepair,
                       title: "Replace broken files",
@@ -398,6 +418,128 @@ struct DeviceView: View {
                     }
                     .padding(.vertical, 4)
                 }
+            }
+        }
+    }
+
+    // MARK: - Listening
+
+    @ViewBuilder
+    private var listeningSections: some View {
+        if let stats = model.stats, stats.plays > 0 {
+            statsBox(stats)
+            rankBox("Most played artists", stats.topArtists.prefix(10).map { ($0.name, "", $0.plays) })
+            rankBox("Most played albums", stats.topAlbums.prefix(10).map { ($0.name, $0.detail, $0.plays) })
+            freeUpBox(stats)
+        } else {
+            PixelBox(title: "Listening") {
+                Text("The player keeps a log of what you play (`.scrobbler.log`), but it is empty or missing. "
+                     + "Listen to some music and scan again.")
+                    .font(.system(size: 13)).foregroundStyle(p.inkSoft)
+            }
+        }
+    }
+
+    private func statsBox(_ stats: ListeningStats) -> some View {
+        let df = DateFormatter(); df.dateStyle = .medium; df.timeStyle = .none
+        let hours = Double(stats.seconds) / 3600
+        let never = stats.albums.filter { $0.plays == 0 }.count
+        return PixelBox(title: "What you listen to") {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 12)], alignment: .leading, spacing: 12) {
+                Stat(value: "\(stats.plays)", caption: "plays")
+                Stat(value: String(format: "%.1f h", hours), caption: "listened")
+                Stat(value: "\(stats.albums.count - never)/\(stats.albums.count)", caption: "albums played")
+                Stat(value: "\(never)", caption: "never played", kind: never > 0 ? .warn : nil)
+            }
+            if let first = stats.first, let last = stats.last {
+                Text("From the player's own log, \(df.string(from: first)) – \(df.string(from: last)). "
+                     + "Anything played before the log started is not counted.")
+                    .font(.system(size: 13)).foregroundStyle(p.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func rankBox(_ title: String, _ rows: [(String, String, Int)]) -> some View {
+        let top = max(rows.map(\.2).max() ?? 1, 1)
+        return PixelBox(title: title) {
+            VStack(spacing: 6) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                    HStack(spacing: 10) {
+                        Text(r.1.isEmpty ? r.0 : "\(r.0) — \(r.1)")
+                            .font(.system(size: 13)).lineLimit(1).truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        PixelProgress(value: Double(r.2) / Double(top)).frame(width: 140)
+                        Text("\(r.2)").font(.system(size: 13, weight: .semibold))
+                            .frame(width: 36, alignment: .trailing)
+                    }
+                }
+            }
+        }
+    }
+
+    private func freeUpBox(_ stats: ListeningStats) -> some View {
+        let df = DateFormatter(); df.dateStyle = .medium; df.timeStyle = .none
+        let shown = Array(stats.leastListened(freeing: .max).prefix(60))
+        return PixelBox(title: "Free up space") {
+            Text("Albums are listed from the least listened to: never played first, then the ones "
+                 + "not touched for longest. Pick how much to free, tick or untick, then remove. "
+                 + "Removed albums go to the undo folder and sync will not copy them back.")
+                .font(.system(size: 13)).foregroundStyle(p.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 12) {
+                Menu {
+                    ForEach([5, 10, 20, 50, 100], id: \.self) { gb in
+                        Button("Free \(gb) GB") { freeTargetGB = gb }
+                    }
+                } label: { Text("Free \(freeTargetGB) GB") }
+                    .menuStyle(.button).buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+                Button("Pick the least listened") {
+                    model.pickLeastListened(freeing: Int64(freeTargetGB) * 1_000_000_000)
+                    UISound.cursor.play()
+                }
+                .buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+                if !model.removalPicks.isEmpty {
+                    Button("Clear") { model.removalPicks = [] }
+                        .buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+                }
+                Spacer(minLength: 0)
+            }
+
+            VStack(spacing: 4) {
+                ForEach(shown) { a in
+                    let on = model.removalPicks.contains(a.id)
+                    PixelCheckbox(state: on ? .on : .off, label: "\(a.artist) — \(a.title)") {
+                        if on { model.removalPicks.remove(a.id) } else { model.removalPicks.insert(a.id) }
+                    }
+                    .overlay(alignment: .trailing) {
+                        Text(a.plays == 0 ? "never played" : "\(a.plays) plays · " + (a.lastPlayed.map { df.string(from: $0) } ?? ""))
+                            .font(.system(size: 12)).foregroundStyle(a.plays == 0 ? p.warn : p.inkSoft)
+                            .padding(.trailing, 90)
+                    }
+                    .overlay(alignment: .trailing) {
+                        Text(ByteFormat.string(a.bytes)).font(.system(size: 12)).foregroundStyle(p.inkSoft)
+                    }
+                }
+                if stats.albums.count > shown.count {
+                    Text("… and \(stats.albums.count - shown.count) more albums, played more")
+                        .font(.system(size: 12)).foregroundStyle(p.inkSoft)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    UISound.open.play()
+                    confirmFree = true
+                } label: {
+                    Label("Remove \(countLabel(model.removalPicks.count, "album"))", systemImage: "trash")
+                }
+                .buttonStyle(PixelButtonStyle(kind: confirmFree ? .normal : .primary))
+                .fixedSize()
+                .disabled(model.removalPicks.isEmpty || model.isBusy)
+                Text(model.removalPicks.isEmpty ? "Nothing ticked." : "Frees " + ByteFormat.string(model.removalBytes) + ".")
+                    .font(.system(size: 13)).foregroundStyle(p.inkSoft)
             }
         }
     }

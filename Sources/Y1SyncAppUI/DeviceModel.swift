@@ -27,6 +27,12 @@ final class DeviceModel {
 
     /// Library tracks, used to find an intact copy of a broken file. Set by
     /// the window from the Sync tab's scan; empty until the library is scanned.
+    /// What the player's own play log says about the music on it.
+    var stats: ListeningStats?
+    /// Albums ticked for removal on the Listening tab.
+    var removalPicks: Set<String> = []
+    /// Called with the albums removed to free space, so sync stops copying them back.
+    var onAlbumsRemoved: (@MainActor ([LibraryAlbum]) -> Void)?
     var libraryTracks: [Track] = [] { didSet { refreshSuggestedRules() } }
     /// Differences between the library's spelling and the player's, offered as merge rules.
     var suggestedRules: [MergeRule] = []
@@ -140,6 +146,8 @@ final class DeviceModel {
         similarAlbums = SimilarAlbums().find(in: found)
         similarArtists = SimilarArtists().find(in: found)
         refreshSuggestedRules()
+        stats = ListeningStats(entries: ScrobbleLog.read(deviceRoot: root), deviceTracks: found)
+        removalPicks = []
 
         let dupes = await Task.detached(priority: .userInitiated) {
             Duplicates().find(in: found)
@@ -213,6 +221,48 @@ final class DeviceModel {
         _ = try? PlayerLibraryCache.update(deviceRoot: root, adding: pairs, dropDeadEntries: false, replaceExisting: true)
         playerList = PlayerLibraryCache.status(deviceRoot: root, deviceTracks: self.tracks)
         status = text + " Tidy the player to move them into one folder."
+    }
+
+    /// Tick the least-listened albums until about `bytes` would be freed.
+    func pickLeastListened(freeing bytes: Int64) {
+        guard let stats else { return }
+        removalPicks = Set(stats.leastListened(freeing: bytes).map(\.id))
+    }
+
+    var removalBytes: Int64 {
+        stats?.albums.filter { removalPicks.contains($0.id) }.reduce(0) { $0 + $1.bytes } ?? 0
+    }
+
+    /// Move the ticked albums (and their lyrics files) into the undo quarantine,
+    /// and tell sync to stop copying them back.
+    func removePickedAlbums() async -> (albums: Int, files: Int, freed: Int64, failed: Int) {
+        guard let root = deviceRoot, let stats else { return (0, 0, 0, 0) }
+        let chosen = stats.albums.filter { removalPicks.contains($0.id) }
+        let result = await Task.detached(priority: .userInitiated) { () -> (Int, Int, Int64, Int) in
+            let undo = UndoRecorder(deviceRoot: root)
+            let engine = SyncEngine()
+            var files = 0, failed = 0
+            var freed: Int64 = 0
+            for album in chosen {
+                for t in album.tracks {
+                    let path = engine.devicePath(of: t.sourceURL, root: root)
+                    if undo.quarantine(t.sourceURL, path: path) { files += 1; freed += t.fileSize } else { failed += 1 }
+                    let lrc = t.sourceURL.deletingPathExtension().appendingPathExtension("lrc")
+                    if FileManager.default.fileExists(atPath: lrc.path) {
+                        undo.quarantine(lrc, path: engine.devicePath(of: lrc, root: root))
+                    }
+                }
+            }
+            if files > 0 { undo.finish(label: "free up space") }
+            return (chosen.count, files, freed, failed)
+        }.value
+        if result.1 > 0 {
+            onAlbumsRemoved?(chosen.map {
+                LibraryAlbum(id: $0.id, artist: $0.artist, title: $0.title, trackCount: $0.tracks.count, bytes: $0.bytes)
+            })
+            await rescanAndRefreshList(status)
+        }
+        return (result.0, result.1, result.2, result.3)
     }
 
     /// Teach the player's song list about what is on the card now. Without

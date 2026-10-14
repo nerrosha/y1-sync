@@ -21,6 +21,7 @@ func printUsage() {
       y1sync artists [--device <name>] [--to <path>]
       y1sync albums [--device <name>] [--to <path>]
       y1sync library [--device <name>] [--to <path>] [--apply]
+      y1sync listening [--device <name>] [--to <path>]
       y1sync merges --library <folder> [--device <name>] [--to <path>]
       y1sync formats [--device <name>] [--to <path>]
       y1sync health [--device <name>] [--to <path>] [--library <folder>] [--repair] [--remove]
@@ -575,6 +576,18 @@ case "library":
     guard args.apply else { print("\nNothing changed. Re-run with --apply to update the list."); break }
     let r = try PlayerLibraryCache.sync(deviceRoot: target, deviceTracks: onCard)
     print("\nUpdated the player's song list: \(r.added) added, \(r.removed) removed. Backup: \(PlayerLibraryCache.fileName).y1sync-backup")
+
+case "listening":
+    let target = resolveTarget(args)
+    let tracks = await LibraryScanner().scan(root: target, cache: ScanCache(root: target))
+    let entries = ScrobbleLog.read(deviceRoot: target)
+    let st = ListeningStats(entries: entries, deviceTracks: tracks)
+    print("\(st.plays) plays, \(String(format: "%.1f", Double(st.seconds) / 3600)) h; \(st.albums.filter { $0.plays == 0 }.count) of \(st.albums.count) albums never played")
+    print("\nTop artists:"); for r in st.topArtists.prefix(8) { print("  \(r.plays)  \(r.name)") }
+    print("\nTop albums:"); for r in st.topAlbums.prefix(8) { print("  \(r.plays)  \(r.detail) — \(r.name)") }
+    let pick = st.leastListened(freeing: 20_000_000_000)
+    print("\nLeast listened, enough for 20 GB: \(pick.count) albums, \(ByteFormat.string(pick.reduce(0) { $0 + $1.bytes }))")
+    for a in pick.prefix(8) { print("  \(a.plays) plays  \(ByteFormat.string(a.bytes))  \(a.artist) — \(a.title)") }
 
 case "merges":
     let target = resolveTarget(args)

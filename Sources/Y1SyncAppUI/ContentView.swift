@@ -39,6 +39,10 @@ struct ContentView: View {
             deviceModel.deviceChanged(to: model.selectedDevice?.url)
         }
         .onChange(of: model.libraryTracks.count) { deviceModel.libraryTracks = model.libraryTracks }
+        .onAppear {
+            // Albums removed to free space must not come back on the next sync.
+            deviceModel.onAlbumsRemoved = { albums in model.setIncluded(false, albums: albums) }
+        }
         .onChange(of: model.selectedDevice?.url) { _, url in
             // The Device and Duplicates tabs hold a scan of one specific
             // player; never let it act on a different one.
