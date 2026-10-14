@@ -53,6 +53,10 @@ struct SyncScreen: View {
                 }
             }
 
+            if model.selectedDevice != nil {
+                firmwareRow
+            }
+
             if let notice = model.connectionNotice {
                 // "… disconnected." is not a success.
                 Notice(kind: model.selectedDevice == nil || notice.hasSuffix("disconnected.")
@@ -68,6 +72,26 @@ struct SyncScreen: View {
                     .help("As soon as the player mounts, scan the music library and show "
                           + "what would be copied. Nothing is written until you press Sync.")
             }
+        }
+    }
+
+    /// Which software the player runs: detected from the card, changeable by hand.
+    private var firmwareRow: some View {
+        HStack(spacing: 8) {
+            Text("Firmware").font(.system(size: 13)).foregroundStyle(p.inkSoft)
+            Menu {
+                Button("Detect automatically (\(model.detectedFirmware.title))") { model.chooseFirmware(nil) }
+                Divider()
+                ForEach(Firmware.allCases) { f in
+                    Button(f.title) { model.chooseFirmware(f) }
+                }
+            } label: {
+                Text(model.firmware.title + (model.firmwareOverride == nil ? "" : " (chosen)"))
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .menuStyle(.button).buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+            .help(model.firmware.summary)
+            Spacer(minLength: 0)
         }
     }
 

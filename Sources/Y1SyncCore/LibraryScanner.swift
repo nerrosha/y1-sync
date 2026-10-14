@@ -6,7 +6,14 @@ import AVFoundation
 /// Metadata comes from AVFoundation so there is no third-party dependency —
 /// it handles ID3, iTunes/MP4 and Vorbis-comment style keys behind one API.
 public struct LibraryScanner: Sendable {
-    public init() {}
+    /// Extensions to pick up; nil means everything any supported firmware plays.
+    public var formats: Set<String>?
+
+    public init(formats: Set<String>? = nil) { self.formats = formats }
+
+    func accepts(_ ext: String) -> Bool {
+        formats.map { $0.contains(ext.lowercased()) } ?? SupportedFormat.isSupported(ext)
+    }
 
     /// Find every supported audio file under `root`.
     public func findAudioFiles(under root: URL) -> [URL] {
@@ -19,7 +26,7 @@ public struct LibraryScanner: Sendable {
 
         var out: [URL] = []
         for case let url as URL in e {
-            guard SupportedFormat.isSupported(url.pathExtension) else { continue }
+            guard accepts(url.pathExtension) else { continue }
             let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
             guard values?.isRegularFile == true else { continue }
             out.append(url)

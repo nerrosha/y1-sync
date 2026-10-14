@@ -23,6 +23,7 @@ enum AppSettings {
         static let removeJunk = "tidyRemovesJunk"
         static let sounds = "soundsEnabled"
         static let mergeRules = "mergeRules"
+        static let firmwareByPlayer = "firmwareByPlayer"
         static let playerMaxRate = "playerMaxSampleRate"
         static let playerMaxBits = "playerMaxBitDepth"
         static let playerAllowALAC = "playerAllowALAC"
@@ -52,6 +53,17 @@ enum AppSettings {
     static var playlistName: String {
         get { defaults.string(forKey: Key.playlistName) ?? "" }
         set { defaults.set(newValue, forKey: Key.playlistName) }
+    }
+
+    /// Firmware the user picked by hand for a player, by player name (absent = detect it).
+    static func firmwareOverride(forPlayer name: String) -> Firmware? {
+        (defaults.dictionary(forKey: Key.firmwareByPlayer) as? [String: String])?[name].flatMap(Firmware.init(rawValue:))
+    }
+
+    static func setFirmwareOverride(_ firmware: Firmware?, forPlayer name: String) {
+        var all = (defaults.dictionary(forKey: Key.firmwareByPlayer) as? [String: String]) ?? [:]
+        all[name] = firmware?.rawValue
+        defaults.set(all, forKey: Key.firmwareByPlayer)
     }
 
     /// Merges the user made on the player, replayed on every sync.

@@ -434,7 +434,11 @@ struct DeviceView: View {
         } else {
             PixelBox(title: "Listening") {
                 Text("The player keeps a log of what you play (`.scrobbler.log`), but it is empty or missing. "
-                     + "Listen to some music and scan again.")
+                     + "Listen to some music and scan again."
+                     + (device.map { Firmware.detect(deviceRoot: $0.url) } == .rockbox
+                        ? " On Rockbox, switch the scrobbler on in its settings first." : "")
+                     + (device.map { Firmware.detect(deviceRoot: $0.url) } == .stock
+                        ? " The stock firmware may not write this log." : ""))
                     .font(.system(size: 13)).foregroundStyle(p.inkSoft)
             }
         }

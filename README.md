@@ -208,6 +208,23 @@ byte-for-byte, since a bug there would silently corrupt a music library.
 `DEVELOPER_DIR` is needed because `xcode-select` points at the Command Line
 Tools, which don't ship XCTest.
 
+## Firmware
+
+The Y1 runs different software and the app adapts to it. It looks at the card to tell
+which one (`.rockbox` folder → Rockbox; `.y1_library_cache.json`, `Y1_Themes` or a JJ
+play log → JJ Launcher / InniClassic; otherwise stock Innioasis). You can override the
+guess per player in the Sync tab.
+
+| | Stock Innioasis | JJ Launcher / InniClassic | Rockbox |
+|---|---|---|---|
+| Formats scanned | mp3 flac wav ogg opus m4a m4b aac ape wma | same | also wv mpc aiff |
+| Cover size kept | 500 px | 1000 px | 500 px |
+| Own song list to keep current | – | `.y1_library_cache.json` | – |
+| Play log (Listening tab) | may not exist | `.scrobbler.log` | when its scrobbler is on |
+
+The stock firmware's exact format list is not documented, so it is treated like the
+launcher's rather than hiding files on a guess. Corrections welcome.
+
 ## License
 
 The code is [MIT](LICENSE). Third-party files keep their own terms:

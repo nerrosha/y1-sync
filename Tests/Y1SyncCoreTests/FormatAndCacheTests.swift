@@ -105,3 +105,36 @@ final class FormatAndCacheTests: XCTestCase {
         XCTAssertNil(again.healthyArt(for: t, signature: "x"))
     }
 }
+
+final class FirmwareTests: XCTestCase {
+    private func card(_ names: [String], dirs: [String] = [], log: String? = nil) throws -> URL {
+        let d = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        for n in dirs { try FileManager.default.createDirectory(at: d.appendingPathComponent(n), withIntermediateDirectories: true) }
+        for n in names { try Data("{}".utf8).write(to: d.appendingPathComponent(n)) }
+        if let log { try Data(log.utf8).write(to: d.appendingPathComponent(".scrobbler.log")) }
+        return d
+    }
+
+    func testDetectsFirmwareFromTheCard() throws {
+        XCTAssertEqual(Firmware.detect(deviceRoot: try card([], dirs: [".rockbox"])), .rockbox)
+        XCTAssertEqual(Firmware.detect(deviceRoot: try card([".y1_library_cache.json"])), .launcher)
+        XCTAssertEqual(Firmware.detect(deviceRoot: try card([], dirs: ["Y1_Themes"])), .launcher)
+        XCTAssertEqual(Firmware.detect(deviceRoot: try card([], log: "#AUDIOSCROBBLER/1.1\n#CLIENT/JJY 1.0\n")), .launcher)
+        XCTAssertEqual(Firmware.detect(deviceRoot: try card([])), .stock)
+    }
+
+    func testScannerOnlyTakesWhatTheFirmwarePlays() throws {
+        let d = try card(["a.mp3", "b.wv", "c.aiff", "d.flac"])
+        let launcher = LibraryScanner(formats: Firmware.launcher.formats).findAudioFiles(under: d).map(\.lastPathComponent)
+        let rockbox = LibraryScanner(formats: Firmware.rockbox.formats).findAudioFiles(under: d).map(\.lastPathComponent)
+        XCTAssertEqual(launcher, ["a.mp3", "d.flac"])
+        XCTAssertEqual(rockbox, ["a.mp3", "b.wv", "c.aiff", "d.flac"])
+        XCTAssertEqual(LibraryScanner().findAudioFiles(under: d).count, 4)
+    }
+
+    func testArtSizeFollowsTheFirmware() {
+        XCTAssertEqual(Firmware.launcher.maxArtPixels, 1000)
+        XCTAssertEqual(Firmware.stock.maxArtPixels, 500)
+    }
+}

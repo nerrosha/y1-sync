@@ -20,7 +20,26 @@ final class AppModel {
 
     var phase: Phase = .idle
     var devices: [Device] = []
-    var selectedDevice: Device?
+    var selectedDevice: Device? { didSet { refreshFirmware() } }
+    /// What the card looks like it runs, and the user's own choice if they made one.
+    private(set) var detectedFirmware: Firmware = .stock
+    private(set) var firmwareOverride: Firmware?
+    var firmware: Firmware { firmwareOverride ?? detectedFirmware }
+
+    private func refreshFirmware() {
+        guard let device = selectedDevice else { return }
+        detectedFirmware = Firmware.detect(deviceRoot: device.url)
+        firmwareOverride = AppSettings.firmwareOverride(forPlayer: device.name)
+        maxArtDimension = firmware.maxArtPixels
+    }
+
+    /// Choose the firmware by hand (nil = detect). The comparison must be redone.
+    func chooseFirmware(_ choice: Firmware?) {
+        guard let device = selectedDevice else { return }
+        AppSettings.setFirmwareOverride(choice, forPlayer: device.name)
+        refreshFirmware()
+        plan = nil
+    }
 
     private(set) var libraryFolder: URL?
 
@@ -95,7 +114,6 @@ final class AppModel {
     var playlistName: String = ""
 
     private let finder = DeviceFinder()
-    private let scanner = LibraryScanner()
 
     /// What is on the selected player, from the last scan — kept so a change
     /// of album selection can be re-planned instantly without rescanning.
@@ -300,7 +318,7 @@ final class AppModel {
         plan = nil
         progressLabel = "Reading tags…"
 
-        let scanner = self.scanner
+        let scanner = LibraryScanner(formats: firmware.formats)
         let libraryCache = ScanCache(root: library)
         let found = await Task.detached(priority: .userInitiated) {
             await scanner.scan(root: library, cache: libraryCache)

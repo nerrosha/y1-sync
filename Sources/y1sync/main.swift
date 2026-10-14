@@ -610,6 +610,7 @@ case "formats":
     let found = await LibraryScanner().scan(root: target, cache: cache)
     guard !found.isEmpty else { fail("no audio found on \(target.path)") }
     print(String(format: "%d file(s) read in %.1fs", found.count, Date().timeIntervalSince(start)))
+    print("Firmware: \(Firmware.detect(deviceRoot: target).title)")
     for row in PlayerLimits.summary(of: found) { print(String(format: "%5d  %@", row.count, row.label)) }
 
 case "health":
