@@ -207,3 +207,10 @@ byte-for-byte, since a bug there would silently corrupt a music library.
 
 `DEVELOPER_DIR` is needed because `xcode-select` points at the Command Line
 Tools, which don't ship XCTest.
+
+## License
+
+The code is [MIT](LICENSE). Third-party files keep their own terms:
+
+- `Resources/Fonts/PixelifySans-*` — SIL Open Font License 1.1 (`PixelifySans-OFL.txt`).
+- Interface sounds are optional: put your own files in `Resources/Sounds` (see `Resources/Sounds/README.txt`). Without them the app is silent.
