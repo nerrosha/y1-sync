@@ -51,6 +51,7 @@ struct DeviceView: View {
                         tidySection(plan)
                             .frame(maxWidth: .infinity)
                         VStack(spacing: Pixel.gap) {
+                            songListSection
                             healthSection
                             enrichSection
                             smartPlaylistsSection
@@ -228,6 +229,34 @@ struct DeviceView: View {
             Text(title).font(.pixel(15, bold: true)).lineLimit(1)
         }
         .tint(p.ink)
+    }
+
+    // MARK: - Player's song list
+
+    @ViewBuilder
+    private var songListSection: some View {
+        if let list = model.playerList, !list.isInSync {
+            PixelBox(title: "Player's song list") {
+                Notice(kind: .warn, text: "\(countLabel(list.missing.count, "track")) on the card "
+                       + "\(list.missing.count == 1 ? "is" : "are") not in the player's own song list, "
+                       + "so \(list.missing.count == 1 ? "it doesn't" : "they don't") show up on the player"
+                       + (list.stale.isEmpty ? "." : "; \(countLabel(list.stale.count, "entry", plural: "entries")) point to files that are gone."))
+                Text("The player lists songs from its own saved list, not from the card. This adds "
+                     + "the missing tracks to it (a backup of the list is kept). Your music is not touched.")
+                    .font(.system(size: 12)).foregroundStyle(p.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Update the list") {
+                    UISound.confirm.play()
+                    Task {
+                        let note = await model.updatePlayerList()
+                        model.status = note.isEmpty ? "The player's song list is already up to date." : note
+                        UISound.success.play()
+                    }
+                }
+                .buttonStyle(PixelButtonStyle(kind: .primary)).fixedSize()
+                .disabled(model.isBusy)
+            }
+        }
     }
 
     // MARK: - Health

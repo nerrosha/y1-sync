@@ -430,10 +430,20 @@ final class AppModel {
             }
         }.value
 
+        var listNote = ""
         if case .success(let r) = result {
             lastChanges = r.changes
             lastDeviceRoot = root
             await enrich(deviceRoot: root)
+            // The player lists songs from its own cached list, not the card:
+            // without this, what was just copied stays invisible on it.
+            let copied = Set(r.changes.map(\.devicePath))
+            let pairs = plan.actions.filter { copied.contains($0.devicePath) }
+                .map { (track: $0.track, devicePath: $0.devicePath) }
+            if let u = try? PlayerLibraryCache.update(deviceRoot: root, adding: pairs, dropDeadEntries: false),
+               u.added > 0 {
+                listNote = "Added \(u.added) to the player's song list."
+            }
         }
 
         switch result {
@@ -447,6 +457,7 @@ final class AppModel {
                 summary += " Resized art on \(r.artworkShrunk) file(s)."
             }
             if !r.failed.isEmpty { summary += " \(r.failed.count) failed." }
+            if !listNote.isEmpty { summary += " " + listNote }
             // Rescan so the plan reflects what is now on the player, then
             // restore the summary — scanAndPlan() leaves phase at .planned,
             // which would otherwise hide the result immediately. (Phase is

@@ -28,6 +28,9 @@ final class DeviceModel {
     var libraryTracks: [Track] = []
     /// Result of the last health check; nil until one has run.
     var brokenFiles: [BrokenFile]?
+    /// How the player's own song list compares with the card; nil when the
+    /// player keeps none or nothing has been scanned.
+    var playerList: PlayerLibraryCache.Status?
 
     /// Groups the user has chosen to act on, by group id.
     var selectedDuplicates: Set<String> = []
@@ -58,6 +61,7 @@ final class DeviceModel {
         tidyPlan = nil
         duplicates = []
         brokenFiles = nil
+        playerList = nil
         selectedDuplicates = []
         progress = 0
         undoSession = root.flatMap { UndoLog.mostRecent(deviceRoot: $0) }
@@ -88,6 +92,7 @@ final class DeviceModel {
             DeviceTidy().plan(deviceRoot: root, tracks: found)
         }.value
         tidyPlan = plan
+        playerList = PlayerLibraryCache.status(deviceRoot: root, deviceTracks: found)
 
         let dupes = await Task.detached(priority: .userInitiated) {
             Duplicates().find(in: found)
@@ -98,6 +103,29 @@ final class DeviceModel {
         status = "\(found.count) track(s) · \(plan.moves.count) to rename · "
                + "\(plan.junk.count) junk file(s) · \(dupes.count) duplicate group(s)"
         busy = .idle
+    }
+
+    /// Teach the player's song list about what is on the card now. Without
+    /// this, files copied since the player last scanned stay invisible on it.
+    /// Returns a short note for the status line ("" when nothing was needed).
+    @discardableResult
+    func updatePlayerList() async -> String {
+        guard let root = deviceRoot, !tracks.isEmpty else { return "" }
+        let found = tracks
+        let result = await Task.detached(priority: .userInitiated) {
+            try? PlayerLibraryCache.sync(deviceRoot: root, deviceTracks: found)
+        }.value
+        playerList = PlayerLibraryCache.status(deviceRoot: root, deviceTracks: found)
+        guard let result, result.added + result.removed > 0 else { return "" }
+        return "Player's song list updated: \(result.added) added, \(result.removed) removed."
+    }
+
+    /// Rescan after a change and keep the player's song list in step.
+    private func rescanAndRefreshList(_ text: String) async {
+        guard let root = deviceRoot else { return }
+        await scan(deviceRoot: root)
+        let note = await updatePlayerList()
+        status = note.isEmpty ? text : text + " " + note
     }
 
     /// Decode the start and end of every file on the player and list the ones
@@ -136,8 +164,7 @@ final class DeviceModel {
         busy = .idle
         var text = "Replaced \(outcome.replaced), removed \(outcome.removed)."
         if !outcome.failed.isEmpty { text += " \(outcome.failed.count) could not be fixed." }
-        await scan(deviceRoot: root)
-        status = text
+        await rescanAndRefreshList(text)
         brokenFiles = nil
     }
 
@@ -169,7 +196,7 @@ final class DeviceModel {
 
         // Paths changed underneath us, so the old scan is stale. This also
         // refreshes undoSession to the tidy we just ran.
-        await scan(deviceRoot: root)
+        await rescanAndRefreshList(status)
     }
 
     /// Reverse the most recent tidy or duplicate cleanup. Only ever the
@@ -178,7 +205,7 @@ final class DeviceModel {
     func undoLastOperation() async -> UndoLog.UndoOutcome? {
         guard let root = deviceRoot else { return nil }
         let outcome = UndoLog.undoMostRecent(deviceRoot: root)
-        await scan(deviceRoot: root)
+        await rescanAndRefreshList(status)
         return outcome
     }
 
@@ -294,7 +321,7 @@ final class DeviceModel {
 
         if removed > 0 {
             undo.finish(label: "remove duplicates")
-            await scan(deviceRoot: root)
+            await rescanAndRefreshList(status)
         }
         return (removed, freed, failed)
     }
