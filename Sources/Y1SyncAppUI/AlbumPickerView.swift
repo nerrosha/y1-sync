@@ -37,7 +37,7 @@ struct AlbumPickerView: View {
 
             Text("Unticked albums are skipped. Nothing already on the player is removed, and "
                  + "albums you add to the library later are ticked by default.")
-                .font(.system(size: 12))
+                .font(.system(size: 13))
                 .foregroundStyle(p.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -79,7 +79,7 @@ struct AlbumPickerView: View {
                     Text(plan.isEmpty
                          ? "Everything selected is already on the player."
                          : countLabel(plan.actions.count, "track") + " to copy · " + ByteFormat.string(plan.bytesToCopy))
-                        .font(.system(size: 11))
+                        .font(.system(size: 13))
                         .foregroundStyle(p.inkSoft)
                         .lineLimit(1)
                 }
@@ -130,7 +130,7 @@ struct AlbumPickerView: View {
                 if expanded.contains(artist.id) { expanded.remove(artist.id) } else { expanded.insert(artist.id) }
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .heavy))
+                    .font(.system(size: 12, weight: .heavy))
                     .rotationEffect(.degrees(isOpen ? 90 : 0))
                     .frame(width: 14)
                     .contentShape(Rectangle())
@@ -144,12 +144,12 @@ struct AlbumPickerView: View {
             }
             .accessibilityLabel(artist.name)
 
-            Text(artist.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+            Text(artist.name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
             Spacer()
             if pending > 0 { Tag(text: "\(pending) new", kind: .good) }
             Text("\(artist.albums.count) album\(artist.albums.count == 1 ? "" : "s") · "
                  + ByteFormat.string(artist.bytes))
-                .font(.system(size: 11))
+                .font(.system(size: 13))
                 .foregroundStyle(p.inkSoft)
                 .lineLimit(1)
         }
@@ -167,13 +167,13 @@ struct AlbumPickerView: View {
                 UISound.cursor.play()
             }
             .accessibilityLabel(album.title)
-            Text(album.title).font(.system(size: 13)).lineLimit(1)
+            Text(album.title).font(.system(size: 14)).lineLimit(1)
                 .foregroundStyle(included ? p.ink : p.inkSoft)
             Spacer()
             if pending > 0 { Tag(text: "\(pending) new", kind: .good) }
             Text("\(album.trackCount) track\(album.trackCount == 1 ? "" : "s") · "
                  + ByteFormat.string(album.bytes))
-                .font(.system(size: 11))
+                .font(.system(size: 13))
                 .foregroundStyle(p.inkSoft)
                 .lineLimit(1)
         }

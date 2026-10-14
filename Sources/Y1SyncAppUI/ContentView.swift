@@ -188,7 +188,7 @@ struct ContentView: View {
     private func activityRow(_ label: String, progress: Double?) -> some View {
         HStack(spacing: 10) {
             Text(label)
-                .font(.system(size: 12))
+                .font(.system(size: 13))
                 .foregroundStyle(p.inkSoft)
                 .lineLimit(1)
                 .truncationMode(.tail)

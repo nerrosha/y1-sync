@@ -86,7 +86,7 @@ struct ResultsView: View {
     private var skippedSection: some View {
         HStack(spacing: 6) {
             Image(systemName: "xmark.square.fill")
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
                 .accessibilityHidden(true)
             Text("Skipped — won't play")
                 .font(.pixel(14, bold: true))
@@ -100,11 +100,11 @@ struct ResultsView: View {
         ForEach(skipped, id: \.track.sourceURL) { report in
             VStack(alignment: .leading, spacing: 2) {
                 Text(report.track.sourceURL.lastPathComponent)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(p.ink)
                     .lineLimit(1)
                 ForEach(report.issues.filter(\.isBlocking), id: \.self) { issue in
-                    Text(issue.describe).font(.system(size: 11))
+                    Text(issue.describe).font(.system(size: 13))
                         .foregroundStyle(p.inkSoft).lineLimit(2)
                 }
             }
@@ -117,9 +117,9 @@ struct ResultsView: View {
     /// the secondary line uses inkSoft only when the row is not selected.
     private func row(_ change: FileChange, selected: Bool) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(change.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+            Text(change.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
             Text("\(change.artist) — \(change.album)")
-                .font(.system(size: 11)).lineLimit(1)
+                .font(.system(size: 13)).lineLimit(1)
                 .foregroundStyle(selected ? p.card : p.inkSoft)
             if change.didAnything {
                 // The point of the whole app: what got fixed.
@@ -155,7 +155,7 @@ struct ResultsView: View {
         if let change = selected {
             PixelBox(title: "Now playing") {
                 Text(URL(fileURLWithPath: change.devicePath).lastPathComponent)
-                    .font(.system(size: 12))
+                    .font(.system(size: 13))
                     .foregroundStyle(p.inkSoft)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -199,7 +199,7 @@ struct ResultsView: View {
             Text(label + ":").font(.pixel(13)).lineLimit(1)
                 .frame(width: 52, alignment: .trailing)
             PixelField {
-                Text(value).font(.system(size: 13)).lineLimit(1)
+                Text(value).font(.system(size: 14)).lineLimit(1)
                 Spacer(minLength: 0)
             }
         }
@@ -275,7 +275,7 @@ struct ResultsView: View {
                             let active = line.index == player.activeLyricIndex
                             ListRow(selected: active) {
                                 Text(line.text.isEmpty ? " " : line.text)
-                                    .font(.system(size: 13, weight: active ? .semibold : .regular))
+                                    .font(.system(size: 14, weight: active ? .semibold : .regular))
                             }
                             .id(line.index)
                             .onTapGesture { player.seek(to: line.time) }

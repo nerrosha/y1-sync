@@ -20,7 +20,7 @@ public struct Y1SyncAppRoot: App {
         // Flat paper runs edge to edge; the title lives in the app's own top bar.
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 980, height: 720)
+        .defaultSize(width: 1040, height: 780)
     }
 }
 

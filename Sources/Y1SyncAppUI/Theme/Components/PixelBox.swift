@@ -120,9 +120,9 @@ struct Notice: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: icon).font(.system(size: 12, weight: .bold))
+            Image(systemName: icon).font(.system(size: 13, weight: .bold))
                 .accessibilityHidden(true)
-            Text(text).font(.system(size: 13))
+            Text(text).font(.system(size: 14))
                 .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(p.color(for: kind))
@@ -167,7 +167,7 @@ struct Stat: View {
                 .font(.pixel(28, bold: true))
                 .foregroundStyle(kind.map { p.color(for: $0) } ?? p.ink)
                 .lineLimit(1).minimumScaleFactor(0.6)
-            Text(caption).font(.system(size: 12)).foregroundStyle(p.inkSoft)
+            Text(caption).font(.system(size: 13)).foregroundStyle(p.inkSoft)
         }
         .accessibilityElement(children: .combine)
     }
@@ -205,7 +205,7 @@ struct EmptyState: View {
         VStack(spacing: 8) {
             Text(title).font(.pixel(22, bold: true))
             Text(message)
-                .font(.system(size: 13))
+                .font(.system(size: 14))
                 .foregroundStyle(p.inkSoft)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)

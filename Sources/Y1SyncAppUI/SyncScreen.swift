@@ -43,7 +43,7 @@ struct SyncScreen: View {
                         }
                     } label: {
                         Text(model.selectedDevice?.displayLabel ?? "Choose a player")
-                            .font(.system(size: 13))
+                            .font(.system(size: 14))
                             .foregroundStyle(p.ink)
                             .lineLimit(1)
                     }
@@ -84,7 +84,7 @@ struct SyncScreen: View {
                     .lineLimit(1)
                 if let folder = model.libraryFolder {
                     Text(folder.deletingLastPathComponent().path)
-                        .font(.system(size: 11))
+                        .font(.system(size: 13))
                         .foregroundStyle(p.inkSoft)
                         .lineLimit(1).truncationMode(.middle)
                 }
@@ -102,13 +102,16 @@ struct SyncScreen: View {
                     .buttonStyle(PixelButtonStyle())
                     .fixedSize()
                 Spacer(minLength: 8)
+                // The main "Scan and compare" button is in the Copy box; this
+                // one appears once there is a result to refresh.
+                if model.plan != nil {
                 // Stays put while scanning (canScan is false then); the live
                 // activity is in the status bar.
                 Button {
                     UISound.cursor.play()
                     Task { await model.scanAndPlan() }
                 } label: {
-                    Label("Scan", systemImage: "magnifyingglass")
+                    Label(model.plan == nil ? "Scan" : "Rescan", systemImage: "magnifyingglass")
                         .lineLimit(1)
                 }
                 .buttonStyle(PixelButtonStyle())
@@ -116,6 +119,7 @@ struct SyncScreen: View {
                 .disabled(!model.canScan || model.selectedDevice == nil)
                 .keyboardShortcut("r", modifiers: .command)
                 .help("Scan the music folder and compare it with the player — nothing is written")
+                }
             }
         }
     }
@@ -150,15 +154,31 @@ struct SyncScreen: View {
 
     @ViewBuilder
     private var idle: some View {
-        Text("Compare first: pick the player, choose a music folder, then press Scan. "
-             + "Nothing is written until you press Sync.")
-            .font(.system(size: 13))
-            .foregroundStyle(p.inkSoft)
-            .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 10) {
+            checklistRow(done: model.selectedDevice != nil,
+                         text: model.selectedDevice != nil ? "Player connected" : "Connect the player")
+            checklistRow(done: model.libraryFolder != nil,
+                         text: model.libraryFolder != nil ? "Music folder chosen" : "Choose or drop a music folder")
+            checklistRow(done: false, text: "Scan to see what will be copied")
+            Text("Nothing is written until you press Sync.")
+                .font(.system(size: 13)).foregroundStyle(p.inkSoft)
+                .padding(.top, 4)
+        }
 
         if case .failed(let message) = model.phase {
             Notice(kind: .bad, text: message)
         }
+    }
+
+    private func checklistRow(done: Bool, text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: done ? "checkmark.square.fill" : "square")
+                .font(.system(size: 16))
+                .foregroundStyle(done ? p.good : p.inkSoft)
+                .accessibilityHidden(true)
+            Text(text).font(.system(size: 15, weight: done ? .regular : .semibold))
+        }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Summary
@@ -251,7 +271,7 @@ struct SyncScreen: View {
             Text(model.hasExclusions
                  ? "Syncing \(model.selectedAlbumCount) of \(model.albumCount) albums"
                  : "Syncing all \(model.albumCount) albums")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .lineLimit(1)
             if newAlbums > 0 {
                 Tag(text: "\(newAlbums) new", kind: .good)
@@ -282,16 +302,16 @@ struct SyncScreen: View {
                 let replace = action.kind == .replace
                 HStack(spacing: 6) {
                     Text(replace ? "↻" : "+")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
                         .foregroundStyle(replace ? p.warn : p.inkSoft)
                         .frame(width: 12)
                         .accessibilityLabel(replace ? "Replace" : "Copy")
                     Text(action.devicePath)
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(size: 13, design: .monospaced))
                         .lineLimit(1).truncationMode(.head)
                     Spacer(minLength: 4)
                     if let why = Self.reasonText(action.reason) {
-                        Text(why).font(.system(size: 11)).foregroundStyle(p.warn)
+                        Text(why).font(.system(size: 13)).foregroundStyle(p.warn)
                             .lineLimit(1).fixedSize()
                     }
                 }
@@ -299,7 +319,7 @@ struct SyncScreen: View {
             }
             if plan.actions.count > 200 {
                 Text("… and \(plan.actions.count - 200) more")
-                    .font(.system(size: 11)).foregroundStyle(p.inkSoft)
+                    .font(.system(size: 13)).foregroundStyle(p.inkSoft)
             }
         }
         .padding(10)
@@ -366,7 +386,7 @@ struct SyncScreen: View {
     private func issueList(_ lines: [String]) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                Text(line).font(.system(size: 11))
+                Text(line).font(.system(size: 13))
                     .foregroundStyle(p.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -402,22 +422,36 @@ struct SyncScreen: View {
 
     private var action: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button {
-                UISound.confirm.play()
-                Task { await model.sync() }
-            } label: {
-                Label(syncTitle, systemImage: "arrow.triangle.2.circlepath")
-                    .lineLimit(1)
+            if model.plan == nil {
+                Button {
+                    UISound.cursor.play()
+                    Task { await model.scanAndPlan() }
+                } label: {
+                    Label("Scan and compare", systemImage: "magnifyingglass").lineLimit(1)
+                }
+                .buttonStyle(PixelButtonStyle(kind: .primary))
+                .fixedSize()
+                .keyboardShortcut(.defaultAction)
+                .disabled(!model.canScan || model.selectedDevice == nil)
+                .help("Scan the music folder and compare it with the player — nothing is written")
+            } else {
+                Button {
+                    UISound.confirm.play()
+                    Task { await model.sync() }
+                } label: {
+                    Label(syncTitle, systemImage: "arrow.triangle.2.circlepath")
+                        .lineLimit(1)
+                }
+                .buttonStyle(PixelButtonStyle(kind: .primary))
+                .fixedSize()
+                .keyboardShortcut(.defaultAction)
+                .disabled(!model.canSync)
             }
-            .buttonStyle(PixelButtonStyle(kind: .primary))
-            .fixedSize()
-            .keyboardShortcut(.defaultAction)
-            .disabled(!model.canSync)
 
             Text(nextStepHint)
-                .font(.system(size: 12))
+                .font(.system(size: 13))
                 .foregroundStyle(p.inkSoft)
-                .lineLimit(1)
+                .lineLimit(2)
 
             switch model.phase {
             case .done(let message):
@@ -443,7 +477,7 @@ struct SyncScreen: View {
         guard let device = model.selectedDevice else { return "Connect the player first" }
         if model.libraryFolder == nil { return "Choose a music folder" }
         if model.phase == .scanning { return "Wait for the scan to finish" }
-        guard let plan = model.plan else { return "Press Scan to compare" }
+        guard let plan = model.plan else { return "Press “Scan and compare”" }
         if model.phase == .syncing { return "Keep the player connected" }
         if !plan.actions.isEmpty && plan.bytesToCopy > device.freeBytes {
             return "Not enough free space on the player"

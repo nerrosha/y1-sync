@@ -15,7 +15,7 @@ struct UndoBanner: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.pixel(15, bold: true))
-                Text(detail).font(.system(size: 12)).foregroundStyle(p.inkSoft)
+                Text(detail).font(.system(size: 13)).foregroundStyle(p.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
@@ -52,7 +52,7 @@ private struct PixelConfirm: ViewModifier {
 
                     VStack(alignment: .leading, spacing: 14) {
                         Text(title).font(.pixel(20, bold: true))
-                        Text(message).font(.system(size: 13))
+                        Text(message).font(.system(size: 14))
                             .fixedSize(horizontal: false, vertical: true)
                         HStack {
                             Spacer()

@@ -23,7 +23,17 @@ struct DeviceView: View {
     @AppStorage("playlistsTempo") private var wantTempoPlaylists = true
     @AppStorage("playlistsGenre") private var wantGenrePlaylists = true
 
+    @State private var section: Section = .fix
     @Environment(\.palette) private var p
+
+    private enum Section: Hashable { case fix, extras }
+
+    /// Things on the player that want attention, for the Fix tab's badge.
+    private func issueCount(_ plan: TidyPlan) -> Int {
+        (plan.moves.isEmpty ? 0 : 1) + (plan.junk.isEmpty ? 0 : 1)
+            + model.similarArtists.count + model.similarAlbums.count + (model.brokenFiles?.count ?? 0)
+            + ((model.playerList?.isInSync ?? true) ? 0 : 1)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Pixel.gap) {
@@ -32,8 +42,7 @@ struct DeviceView: View {
             if let session = model.undoSession {
                 UndoBanner(
                     title: "You can undo the last \(session.label) (\(countLabel(session.entries.count, "change"))).",
-                    detail: "Only this most recent operation can be restored — running another "
-                        + "tidy or cleanup permanently drops it.",
+                    detail: "Only the latest operation can be undone; the next one replaces it.",
                     onUndo: {
                         Task {
                             let outcome = await model.undoLastOperation()
@@ -50,24 +59,34 @@ struct DeviceView: View {
             }
 
             if model.hasScanned, let plan = model.tidyPlan {
+                PixelTabBar(tabs: [PixelTab(id: Section.fix, title: "Fix", badge: issueCount(plan)),
+                                   PixelTab(id: Section.extras, title: "Extras")],
+                            selection: $section, shortcuts: false)
                 ScrollView {
-                    HStack(alignment: .top, spacing: Pixel.gap) {
-                        tidySection(plan)
-                            .frame(maxWidth: .infinity)
-                        VStack(spacing: Pixel.gap) {
+                    VStack(spacing: Pixel.gap) {
+                        switch section {
+                        case .fix:
+                            tidySection(plan)
                             songListSection
                             similarArtistsSection
                             similarAlbumsSection
                             healthSection
+                        case .extras:
                             enrichSection
                             smartPlaylistsSection
                         }
-                        .frame(width: 320)
                     }
+                    .frame(maxWidth: 760)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 4)
                 }
             } else if device == nil {
                 EmptyState(title: "No player",
                            message: Wording.noPlayer + ". It shows up here by itself.")
+            } else if model.isBusy {
+                EmptyState(title: "Reading the player…",
+                           message: "Reading every file's tags takes a minute on a full card. "
+                               + "Nothing is changed.")
             } else {
                 EmptyState(title: "Nothing scanned yet",
                            message: "Reads what is already on it — nothing is changed until you "
@@ -160,7 +179,7 @@ struct DeviceView: View {
                 Tag(text: countLabel(model.tracks.count, "track"))
             }
             Text(device?.displayLabel ?? "No player")
-                .font(.system(size: 12))
+                .font(.system(size: 13))
                 .foregroundStyle(p.inkSoft)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -185,7 +204,7 @@ struct DeviceView: View {
         PixelBox(title: "Tidy") {
             Text("The player shows filenames, not tags — so renaming into one consistent "
                  + "Artist/Album/NN Title scheme changes what you see while browsing.")
-                .font(.system(size: 12))
+                .font(.system(size: 13))
                 .foregroundStyle(p.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -201,7 +220,7 @@ struct DeviceView: View {
             if !plan.leftoverFolders.isEmpty {
                 Text("Leftovers are pre-tidy folders whose tracks have all moved out, leaving "
                      + "only a cover or rip log — any cover art is copied to the new album folder first.")
-                    .font(.system(size: 11))
+                    .font(.system(size: 13))
                     .foregroundStyle(p.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -230,7 +249,7 @@ struct DeviceView: View {
                 .disabled(plan.isEmpty || model.isBusy)
 
                 Text("Music is only ever moved, never overwritten.")
-                    .font(.system(size: 11))
+                    .font(.system(size: 13))
                     .foregroundStyle(p.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -244,7 +263,7 @@ struct DeviceView: View {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                         Text(line)
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(.system(size: 12, design: .monospaced))
                             .lineLimit(1).truncationMode(.middle)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -271,7 +290,7 @@ struct DeviceView: View {
                        + (list.stale.isEmpty ? "." : "; \(countLabel(list.stale.count, "entry", plural: "entries")) point to files that are gone."))
                 Text("The player lists songs from its own saved list, not from the card. This adds "
                      + "the missing tracks to it (a backup of the list is kept). Your music is not touched.")
-                    .font(.system(size: 12)).foregroundStyle(p.inkSoft)
+                    .font(.system(size: 13)).foregroundStyle(p.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Update the list") {
                     UISound.confirm.play()
@@ -296,7 +315,7 @@ struct DeviceView: View {
                 Text("The player lists these as separate artists (and the card has a folder for each), "
                      + "but the name is the same apart from “The” or capital letters. Pick the spelling "
                      + "to keep; only the artist tags change.")
-                    .font(.system(size: 12)).foregroundStyle(p.inkSoft)
+                    .font(.system(size: 13)).foregroundStyle(p.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(model.similarArtists) { group in
                     VStack(alignment: .leading, spacing: 6) {
@@ -304,9 +323,9 @@ struct DeviceView: View {
                             let chosen = (chosenArtist[group.id] ?? group.suggested) == v.name
                             Button { chosenArtist[group.id] = v.name; UISound.cursor.play() } label: {
                                 ListRow(selected: chosen) {
-                                    Text(v.name).font(.system(size: 12)).lineLimit(1)
+                                    Text(v.name).font(.system(size: 13)).lineLimit(1)
                                     Spacer(minLength: 6)
-                                    Text(countLabel(v.tracks.count, "song")).font(.system(size: 11)).opacity(0.8)
+                                    Text(countLabel(v.tracks.count, "song")).font(.system(size: 13)).opacity(0.8)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -334,7 +353,7 @@ struct DeviceView: View {
                 Text("These show up on the player as separate albums, but the songs are the same — "
                      + "a typo in the album name, an extra edition, or a song downloaded on its own. "
                      + "Pick the name to keep; only the album tag changes.")
-                    .font(.system(size: 12)).foregroundStyle(p.inkSoft)
+                    .font(.system(size: 13)).foregroundStyle(p.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(model.similarAlbums) { group in
                     VStack(alignment: .leading, spacing: 6) {
@@ -343,9 +362,9 @@ struct DeviceView: View {
                             let chosen = (chosenAlbum[group.id] ?? group.suggested) == v.title
                             Button { chosenAlbum[group.id] = v.title; UISound.cursor.play() } label: {
                                 ListRow(selected: chosen) {
-                                    Text(v.title).font(.system(size: 12)).lineLimit(1)
+                                    Text(v.title).font(.system(size: 13)).lineLimit(1)
                                     Spacer(minLength: 6)
-                                    Text(countLabel(v.tracks.count, "song")).font(.system(size: 11)).opacity(0.8)
+                                    Text(countLabel(v.tracks.count, "song")).font(.system(size: 13)).opacity(0.8)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -354,7 +373,7 @@ struct DeviceView: View {
                         }
                         if group.sharedSongs > 0 {
                             Text("\(countLabel(group.sharedSongs, "song")) exist in more than one — they will show as duplicates afterwards.")
-                                .font(.system(size: 11)).foregroundStyle(p.inkSoft)
+                                .font(.system(size: 13)).foregroundStyle(p.inkSoft)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Button("Merge into “\(chosenAlbum[group.id] ?? group.suggested)”") {
@@ -375,7 +394,7 @@ struct DeviceView: View {
         PixelBox(title: "Broken files") {
             Text("Plays the start and the end of every file on the player, so cut-off copies "
                  + "show up too. Nothing is changed until you choose.")
-                .font(.system(size: 12))
+                .font(.system(size: 13))
                 .foregroundStyle(p.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -388,18 +407,18 @@ struct DeviceView: View {
                            + "\(fixable) can be replaced from your library.")
                     if model.libraryTracks.isEmpty {
                         Text("Scan the music folder on the Sync tab first to find replacements.")
-                            .font(.system(size: 11)).foregroundStyle(p.inkSoft)
+                            .font(.system(size: 13)).foregroundStyle(p.inkSoft)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     ScrollView {
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(broken) { b in
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(b.devicePath).font(.system(size: 11, design: .monospaced))
+                                    Text(b.devicePath).font(.system(size: 13, design: .monospaced))
                                         .lineLimit(1).truncationMode(.middle)
                                     Text(b.reasons.joined(separator: "; ") + (b.replacement == nil
                                          ? "" : " — replacement found"))
-                                        .font(.system(size: 11)).foregroundStyle(p.inkSoft)
+                                        .font(.system(size: 13)).foregroundStyle(p.inkSoft)
                                         .lineLimit(2)
                                 }
                             }
@@ -442,7 +461,7 @@ struct DeviceView: View {
         PixelBox(title: "Lyrics + covers") {
             Text("Looks up the \(countLabel(model.tracks.count, "track")) on the player. Sends artist, album "
                  + "and track names to LRCLIB and MusicBrainz.")
-                .font(.system(size: 12))
+                .font(.system(size: 13))
                 .foregroundStyle(p.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -463,7 +482,7 @@ struct DeviceView: View {
                 .fixedSize()
                 .disabled(model.isBusy || (!wantLyrics && !wantCovers))
                 Text("Existing lyrics are never overwritten.")
-                    .font(.system(size: 11)).foregroundStyle(p.inkSoft)
+                    .font(.system(size: 13)).foregroundStyle(p.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -475,7 +494,7 @@ struct DeviceView: View {
         PixelBox(title: "Smart playlists") {
             Text("Builds playlists from mood, tempo and genre tags already on the files — no "
                  + "network, and a track without the tag is just skipped.")
-                .font(.system(size: 12))
+                .font(.system(size: 13))
                 .foregroundStyle(p.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
 

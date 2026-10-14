@@ -78,7 +78,7 @@ struct PixelCheckbox: View {
                 }
                 .frame(width: 16, height: 16)
                 if let label {
-                    Text(label).font(.system(size: 13)).foregroundStyle(p.ink).lineLimit(1)
+                    Text(label).font(.system(size: 14)).foregroundStyle(p.ink).lineLimit(1)
                 }
             }
             .contentShape(Rectangle())
@@ -134,7 +134,7 @@ struct PixelTextField: View {
             }
             TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
+                .font(.system(size: 14))
                 .foregroundStyle(p.ink)
         }
     }
@@ -152,6 +152,8 @@ struct PixelTab<ID: Hashable>: Identifiable {
 struct PixelTabBar<ID: Hashable>: View {
     let tabs: [PixelTab<ID>]
     @Binding var selection: ID
+    /// ⌘1…⌘n switch tabs; off for a second tab bar on the same screen.
+    var shortcuts = true
     @Environment(\.palette) private var p
 
     var body: some View {
@@ -178,8 +180,10 @@ struct PixelTabBar<ID: Hashable>: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
-                .help("\(tab.title) (⌘\(index + 1))")
+                .background(shortcuts ? Button("") { selection = tab.id }
+                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                    .opacity(0).accessibilityHidden(true) : nil)
+                .help(shortcuts ? "\(tab.title) (⌘\(index + 1))" : tab.title)
                 .accessibilityLabel(tab.title)
                 // The badge is otherwise visual only.
                 .accessibilityValue(tab.badge.map { $0 > 0 ? "\($0)" : "" } ?? "")

@@ -116,7 +116,7 @@ struct DuplicatesView: View {
                         .lineLimit(1)
                         .frame(width: 90, alignment: .leading)
                     Text(track.sourceURL.lastPathComponent)
-                        .font(.system(size: 12))
+                        .font(.system(size: 13))
                         .lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 8)
                     Button {
@@ -148,7 +148,7 @@ struct DuplicatesView: View {
                      ? "Tick the groups you want cleaned up."
                      : "Keeps the copy marked keep in \(countLabel(model.selectedDuplicates.count, "group")), frees "
                        + ByteFormat.string(model.reclaimableBytes) + ".")
-                    .font(.system(size: 12))
+                    .font(.system(size: 13))
                     .lineLimit(2)
                 Spacer()
                 Button {

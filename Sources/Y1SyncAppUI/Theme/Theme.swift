@@ -94,8 +94,11 @@ extension View {
 /// stay in the system font, which reads better at small sizes. If the font
 /// failed to register, `Font.custom` falls back to the system font.
 extension Font {
+    /// The pixel face only for headings and big numbers: at body sizes it is hard
+    /// to read, so smaller text (buttons, tabs, labels) uses the system font.
     static func pixel(_ size: CGFloat, bold: Bool = false) -> Font {
-        .custom(bold ? "PixelifySans-SemiBold" : "PixelifySans-Regular", size: size, relativeTo: .body)
+        if size < 18 { return .system(size: size + 1, weight: bold ? .semibold : .medium) }
+        return .custom(bold ? "PixelifySans-SemiBold" : "PixelifySans-Regular", size: size, relativeTo: .body)
     }
 }
 
