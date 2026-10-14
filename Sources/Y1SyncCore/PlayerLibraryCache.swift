@@ -67,6 +67,7 @@ public enum PlayerLibraryCache {
     public struct Result: Sendable {
         public var added = 0
         public var removed = 0
+        public var replaced = 0
     }
 
     /// Add `adding` to the list (skipping what is already there) and, when
@@ -76,7 +77,7 @@ public enum PlayerLibraryCache {
     @discardableResult
     public static func update(
         deviceRoot: URL, adding: [(track: Track, devicePath: String)],
-        dropDeadEntries: Bool = true
+        dropDeadEntries: Bool = true, replaceExisting: Bool = false
     ) throws -> Result {
         guard exists(deviceRoot: deviceRoot) else { return Result() }
         let (top, entries) = try load(deviceRoot)
@@ -86,7 +87,12 @@ public enum PlayerLibraryCache {
 
         var kept: [[String: Any]] = []
         var listed = Set<String>()
-        for e in entries {
+        // Tags changed in place (album merge): the file's path is the same but
+        // the player's copy of its tags is out of date.
+        let fresh = replaceExisting
+            ? Dictionary(adding.map { (key($0.devicePath), $0) }, uniquingKeysWith: { $1 }) : [:]
+        var replaced = 0
+        for var e in entries {
             guard let path = e["path"] as? String else { kept.append(e); continue }
             let rel = deviceRelative(path, mount: mount)
             if dropDeadEntries,
@@ -95,6 +101,13 @@ public enum PlayerLibraryCache {
                 continue
             }
             listed.insert(key(rel))
+            if let item = fresh[key(rel)] {
+                let new = entry(for: item.track, devicePath: item.devicePath, mount: mount)
+                // Only the tag fields are refreshed; anything else the firmware
+                // stores on the entry stays as it was.
+                for f in ["trackNum", "title", "albumArtist", "album", "artist"] { e[f] = new[f] }
+                replaced += 1
+            }
             kept.append(e)
         }
         for item in adding where !listed.contains(key(item.devicePath)) {
@@ -102,7 +115,8 @@ public enum PlayerLibraryCache {
             kept.append(entry(for: item.track, devicePath: item.devicePath, mount: mount))
             result.added += 1
         }
-        guard result.added > 0 || result.removed > 0 else { return result }
+        result.replaced = replaced
+        guard result.added > 0 || result.removed > 0 || replaced > 0 else { return result }
 
         var out = top
         out["music"] = kept

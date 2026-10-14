@@ -7,6 +7,8 @@ public enum UndoEntry: Codable, Sendable, Equatable {
     /// Something that would otherwise have been deleted, moved into
     /// quarantine instead — reversed by moving it back to `originalPath`.
     case quarantined(originalPath: String, quarantineName: String)
+    /// An album tag rewritten in place — reversed by writing `album` back.
+    case retagged(path: String, album: String)
 }
 
 public struct UndoSession: Codable, Sendable, Identifiable {
@@ -54,6 +56,12 @@ public final class UndoRecorder: @unchecked Sendable {
         entries.append(.quarantined(originalPath: path, quarantineName: name))
         lock.unlock()
         return true
+    }
+
+    public func recordRetag(path: String, oldAlbum: String) {
+        lock.lock()
+        entries.append(.retagged(path: path, album: oldAlbum))
+        lock.unlock()
     }
 
     public func recordMove(from: String, to: String) {
@@ -139,6 +147,12 @@ public enum UndoLog {
                     try fm.moveItem(at: src, to: dst)
                     outcome.restored += 1
                 } catch { outcome.failed.append(from) }
+
+            case .retagged(let path, let album):
+                let file = full(path)
+                if fm.fileExists(atPath: file.path), AlbumRetagger.setAlbum(album, in: file) {
+                    outcome.restored += 1
+                } else { outcome.failed.append(path) }
 
             case .quarantined(let originalPath, let quarantineName):
                 let src = trashRoot(deviceRoot: deviceRoot)

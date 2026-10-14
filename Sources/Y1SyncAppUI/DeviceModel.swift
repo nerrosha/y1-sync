@@ -31,6 +31,8 @@ final class DeviceModel {
     /// How the player's own song list compares with the card; nil when the
     /// player keeps none or nothing has been scanned.
     var playerList: PlayerLibraryCache.Status?
+    /// Albums that browse as several although they are one (typo, edition, stray single).
+    var similarAlbums: [SimilarAlbumGroup] = []
 
     /// Groups the user has chosen to act on, by group id.
     var selectedDuplicates: Set<String> = []
@@ -62,6 +64,7 @@ final class DeviceModel {
         duplicates = []
         brokenFiles = nil
         playerList = nil
+        similarAlbums = []
         selectedDuplicates = []
         progress = 0
         undoSession = root.flatMap { UndoLog.mostRecent(deviceRoot: $0) }
@@ -93,6 +96,7 @@ final class DeviceModel {
         }.value
         tidyPlan = plan
         playerList = PlayerLibraryCache.status(deviceRoot: root, deviceTracks: found)
+        similarAlbums = SimilarAlbums().find(in: found)
 
         let dupes = await Task.detached(priority: .userInitiated) {
             Duplicates().find(in: found)
@@ -103,6 +107,34 @@ final class DeviceModel {
         status = "\(found.count) track(s) · \(plan.moves.count) to rename · "
                + "\(plan.junk.count) junk file(s) · \(dupes.count) duplicate group(s)"
         busy = .idle
+    }
+
+    /// Give every track of a group the same album title, so the player shows one
+    /// album. Only the album tag changes (audio untouched); Undo restores each
+    /// file's old title. Folders follow once the player is tidied.
+    func mergeAlbums(_ group: SimilarAlbumGroup, into title: String) async {
+        guard let root = deviceRoot, !isBusy else { return }
+        busy = .tidying
+        status = "Merging into “\(title)”…"
+        let tracks = group.variants.flatMap(\.tracks)
+        let outcome = await Task.detached(priority: .userInitiated) { () -> (AlbumRetagger.Outcome, [Track]) in
+            let undo = UndoRecorder(deviceRoot: root)
+            let out = AlbumRetagger.setAlbum(title, for: tracks, deviceRoot: root, undo: undo)
+            undo.finish(label: "merge albums")
+            return (out, tracks)
+        }.value
+        busy = .idle
+
+        var text = "\(countLabel(outcome.0.changed, "file")) now in “\(title)”."
+        if !outcome.0.failed.isEmpty { text += " \(outcome.0.failed.count) could not be changed." }
+        await scan(deviceRoot: root)
+        // Tags changed in place, so the player's copy of them is stale.
+        let engine = SyncEngine()
+        let pairs = self.tracks.filter { t in group.variants.contains { v in v.tracks.contains { $0.sourceURL == t.sourceURL } } }
+            .map { (track: $0, devicePath: engine.devicePath(of: $0.sourceURL, root: root)) }
+        _ = try? PlayerLibraryCache.update(deviceRoot: root, adding: pairs, dropDeadEntries: false, replaceExisting: true)
+        playerList = PlayerLibraryCache.status(deviceRoot: root, deviceTracks: self.tracks)
+        status = text + " Tidy the player to move them into one folder."
     }
 
     /// Teach the player's song list about what is on the card now. Without

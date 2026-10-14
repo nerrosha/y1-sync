@@ -11,6 +11,8 @@ struct DeviceView: View {
     @State private var confirmTidy = false
     @State private var confirmForget = false
     @State private var confirmRepair = false
+    @State private var chosenAlbum: [String: String] = [:]
+    @State private var pendingMerge: SimilarAlbumGroup?
     @State private var confirmRemoveBroken = false
     // Remembered between launches.
     @AppStorage("deviceWantLyrics") private var wantLyrics = true
@@ -52,6 +54,7 @@ struct DeviceView: View {
                             .frame(maxWidth: .infinity)
                         VStack(spacing: Pixel.gap) {
                             songListSection
+                            similarAlbumsSection
                             healthSection
                             enrichSection
                             smartPlaylistsSection
@@ -90,6 +93,17 @@ struct DeviceView: View {
                       message: "Frees the space it was holding right away. This can't be undone.",
                       confirmTitle: "Discard") {
             model.forgetUndoSession()
+        }
+        .pixelConfirm(isPresented: Binding(get: { pendingMerge != nil }, set: { if !$0 { pendingMerge = nil } }),
+                      title: "Merge albums",
+                      message: "Sets the album name of \(pendingMerge.map { countLabel($0.trackCount, "song") } ?? "") to "
+                          + "“\(pendingMerge.map { chosenAlbum[$0.id] ?? $0.suggested } ?? "")”. Only the tag changes, the audio "
+                          + "is untouched, and Undo puts every old name back.",
+                      confirmTitle: "Merge") {
+            guard let group = pendingMerge else { return }
+            UISound.confirm.play()
+            let title = chosenAlbum[group.id] ?? group.suggested
+            Task { await model.mergeAlbums(group, into: title); UISound.success.play() }
         }
         .pixelConfirm(isPresented: $confirmRepair,
                       title: "Replace broken files",
@@ -255,6 +269,50 @@ struct DeviceView: View {
                 }
                 .buttonStyle(PixelButtonStyle(kind: .primary)).fixedSize()
                 .disabled(model.isBusy)
+            }
+        }
+    }
+
+    // MARK: - Similar albums
+
+    @ViewBuilder
+    private var similarAlbumsSection: some View {
+        if !model.similarAlbums.isEmpty {
+            PixelBox(title: "Albums split in two") {
+                Text("These show up on the player as separate albums, but the songs are the same — "
+                     + "a typo in the album name, an extra edition, or a song downloaded on its own. "
+                     + "Pick the name to keep; only the album tag changes.")
+                    .font(.system(size: 12)).foregroundStyle(p.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(model.similarAlbums) { group in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(group.albumArtist).font(.pixel(14, bold: true)).lineLimit(1)
+                        ForEach(group.variants) { v in
+                            let chosen = (chosenAlbum[group.id] ?? group.suggested) == v.title
+                            Button { chosenAlbum[group.id] = v.title; UISound.cursor.play() } label: {
+                                ListRow(selected: chosen) {
+                                    Text(v.title).font(.system(size: 12)).lineLimit(1)
+                                    Spacer(minLength: 6)
+                                    Text(countLabel(v.tracks.count, "song")).font(.system(size: 11)).opacity(0.8)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(v.title), \(countLabel(v.tracks.count, "song"))")
+                            .accessibilityAddTraits(chosen ? .isSelected : [])
+                        }
+                        if group.sharedSongs > 0 {
+                            Text("\(countLabel(group.sharedSongs, "song")) exist in more than one — they will show as duplicates afterwards.")
+                                .font(.system(size: 11)).foregroundStyle(p.inkSoft)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Button("Merge into “\(chosenAlbum[group.id] ?? group.suggested)”") {
+                            pendingMerge = group
+                        }
+                        .buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+                        .disabled(model.isBusy)
+                    }
+                    .padding(.vertical, 4)
+                }
             }
         }
     }

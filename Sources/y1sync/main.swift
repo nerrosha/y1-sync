@@ -18,6 +18,7 @@ func printUsage() {
       y1sync plan  <library-folder> [--device <name>] [--to <path>]
       y1sync sync  <library-folder> [--device <name>] [--to <path>] [--playlist <name>]
       y1sync undo  [--device <name>] [--to <path>] [--apply | --forget]
+      y1sync albums [--device <name>] [--to <path>]
       y1sync library [--device <name>] [--to <path>] [--apply]
       y1sync health [--device <name>] [--to <path>] [--library <folder>] [--repair] [--remove]
       y1sync playlists [--device <name>] [--to <path>] [--mood] [--tempo] [--genre]
@@ -35,6 +36,8 @@ func printUsage() {
       enrich    Add lyrics and missing covers to what is already on the player.
       plan      Show what a sync would copy, without writing anything.
       sync      Copy missing tracks to the player.
+      albums    List albums that are really one album split by their tags (a typo,
+                an edition, a single downloaded alone). Changes nothing.
       library   Compare the player's own song list (.y1_library_cache.json) with the
                 card. The player shows songs from that list, so tracks copied after
                 its last scan are invisible on it. --apply adds the missing tracks
@@ -527,6 +530,17 @@ case "plan", "sync":
         fail(e.description)
     } catch {
         fail(error.localizedDescription)
+    }
+
+case "albums":
+    let target = resolveTarget(args)
+    let onCard = await LibraryScanner().scan(root: target)
+    let groups = SimilarAlbums().find(in: onCard)
+    if groups.isEmpty { print("No album looks split (\(onCard.count) tracks)."); break }
+    for g in groups {
+        print("\(g.albumArtist) — \(g.trackCount) tracks, suggested name “\(g.suggested)”")
+        for v in g.variants { print("    \(v.tracks.count)  “\(v.title)”") }
+        if g.sharedSongs > 0 { print("    \(g.sharedSongs) song(s) appear under more than one name") }
     }
 
 case "library":
