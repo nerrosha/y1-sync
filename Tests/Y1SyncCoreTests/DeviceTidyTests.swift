@@ -253,3 +253,37 @@ final class DeviceTidyTests: XCTestCase {
             atPath: device.appendingPathComponent("Music/Odd/.DS_Store").path))
     }
 }
+
+final class ChangeReportTests: XCTestCase {
+    func testSyncReportGroupsByAlbum() {
+        func t(_ n: String, _ album: String) -> Track {
+            Track(sourceURL: URL(fileURLWithPath: "/l/\(n).flac"), title: n, artist: "A", album: album, fileSize: 100)
+        }
+        let plan = SyncPlan(actions: [
+            SyncAction(kind: .copy, track: t("1", "X"), devicePath: "/Music/A/X/01 1.flac"),
+            SyncAction(kind: .copy, track: t("2", "X"), devicePath: "/Music/A/X/02 2.flac"),
+            SyncAction(kind: .replace, track: t("3", "Y"), devicePath: "/Music/A/Y/03 3.flac", reason: .truncated),
+        ], upToDate: [t("4", "Z")])
+        let r = SyncReport(plan: plan)
+        XCTAssertEqual(r.albums.count, 2)
+        XCTAssertEqual(r.added, 2); XCTAssertEqual(r.replaced, 1); XCTAssertEqual(r.unchanged, 1)
+        XCTAssertEqual(r.albums.last?.reasons, ["cut off"])
+        XCTAssertTrue(r.text.contains("A — X: +2"))
+    }
+
+    func testTidyPreviewFlagsRenamesThatWouldBeRefused() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("Music/A/New"), withIntermediateDirectories: true)
+        try Data([1]).write(to: root.appendingPathComponent("Music/A/New/01 One.flac"))   // target already taken
+        let plan = TidyPlan(moves: [
+            TidyAction(path: "/Music/A/Old/01 One.flac", kind: .move(to: "/Music/A/New/01 One.flac"), bytes: 1),
+            TidyAction(path: "/Music/A/Old/02 Two.flac", kind: .move(to: "/Music/A/New/02 Two.flac"), bytes: 1),
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pv = TidyPreview(plan: plan, deviceRoot: root)
+        XCTAssertEqual(pv.blocked.count, 1)
+        XCTAssertEqual(pv.folders.count, 1)
+        XCTAssertEqual(pv.folders.first?.count, 2)
+        XCTAssertEqual(pv.folders.first?.blocked, 1)
+    }
+}

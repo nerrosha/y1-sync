@@ -10,7 +10,8 @@ struct SyncScreen: View {
     @Binding var showAlbumPicker: Bool
 
     @State private var isDropTarget = false
-    @State private var showFiles = true
+    @State private var showFiles = false
+    @State private var showAlbums = true
     @Environment(\.palette) private var p
 
     var body: some View {
@@ -202,6 +203,7 @@ struct SyncScreen: View {
             issues
 
             if !plan.actions.isEmpty {
+                albumReport(plan)
                 DisclosureGroup(isExpanded: $showFiles) {
                     fileList(plan)
                         .padding(.top, 6)
@@ -214,6 +216,52 @@ struct SyncScreen: View {
             } else {
                 Notice(kind: .good, text: "Everything selected is already on the player.")
             }
+        }
+    }
+
+    /// "What will change", per album — nothing is written until Sync.
+    private func albumReport(_ plan: SyncPlan) -> some View {
+        let report = SyncReport(plan: plan)
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Will add \(countLabel(report.added, "track"))"
+                 + (report.replaced > 0 ? ", replace \(report.replaced)" : "")
+                 + " (\(ByteFormat.string(report.bytes))). \(report.unchanged) already there stay as they are. "
+                 + "Nothing on the player is deleted.")
+                .font(.system(size: 14, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            DisclosureGroup(isExpanded: $showAlbums) {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(report.albums.prefix(300)) { a in
+                        HStack(spacing: 8) {
+                            Text("\(a.artist) — \(a.album)")
+                                .font(.system(size: 13)).lineLimit(1).truncationMode(.tail)
+                            Spacer(minLength: 6)
+                            if a.added > 0 { Tag(text: "+\(a.added)", kind: .good) }
+                            if a.replaced > 0 {
+                                Tag(text: "replace \(a.replaced)", kind: .warn)
+                                    .help(a.reasons.sorted().joined(separator: ", "))
+                            }
+                            Text(ByteFormat.string(a.bytes))
+                                .font(.system(size: 12)).foregroundStyle(p.inkSoft)
+                                .frame(width: 70, alignment: .trailing)
+                        }
+                    }
+                    if report.albums.count > 300 {
+                        Text("… and \(report.albums.count - 300) more albums")
+                            .font(.system(size: 12)).foregroundStyle(p.inkSoft)
+                    }
+                    Button("Copy report") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(report.text, forType: .string)
+                        UISound.success.play()
+                    }
+                    .buttonStyle(PixelButtonStyle(compact: true)).fixedSize().padding(.top, 4)
+                }
+                .padding(.top, 6)
+            } label: {
+                Text("By album (\(report.albums.count))").font(.pixel(15, bold: true)).lineLimit(1)
+            }
+            .tint(p.ink)
         }
     }
 

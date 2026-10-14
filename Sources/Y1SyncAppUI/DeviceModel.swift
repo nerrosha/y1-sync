@@ -21,6 +21,8 @@ final class DeviceModel {
 
     var tracks: [Track] = []
     var tidyPlan: TidyPlan?
+    /// The tidy plan with renames that would be refused flagged in advance.
+    var tidyPreview: TidyPreview?
     var duplicates: [DuplicateGroup] = []
 
     /// Library tracks, used to find an intact copy of a broken file. Set by
@@ -122,6 +124,7 @@ final class DeviceModel {
             DeviceTidy().plan(deviceRoot: root, tracks: found)
         }.value
         tidyPlan = plan
+        tidyPreview = TidyPreview(plan: plan, deviceRoot: root)
         playerList = PlayerLibraryCache.status(deviceRoot: root, deviceTracks: found)
         similarAlbums = SimilarAlbums().find(in: found)
         similarArtists = SimilarArtists().find(in: found)

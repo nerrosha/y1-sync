@@ -230,6 +230,18 @@ struct DeviceView: View {
                 .help("macOS creates these when writing to the player. They are invisible on "
                       + "your Mac but the player lists them.")
 
+            if let pv = model.tidyPreview, !pv.blocked.isEmpty {
+                Notice(kind: .warn,
+                       text: "\(countLabel(pv.blocked.count, "rename")) will be skipped: a file with that "
+                           + "name is already in the target folder, so the same song is on the player "
+                           + "twice. Remove the extra copies in the Dupes tab first, then tidy.")
+            }
+            if let pv = model.tidyPreview, !pv.folders.isEmpty {
+                preview("Preview by folder (\(pv.folders.count))", pv.folders.prefix(200).map {
+                    "\($0.from)  →  \($0.to)  · \(countLabel($0.count, "file"))"
+                        + ($0.blocked > 0 ? "  · \($0.blocked) skipped" : "")
+                })
+            }
             if !plan.moves.isEmpty {
                 preview("Preview renames (\(plan.moves.count))", plan.moves.prefix(200).map(\.describe))
             }
