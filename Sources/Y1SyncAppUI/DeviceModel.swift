@@ -1,0 +1,252 @@
+import Foundation
+import Observation
+import Y1SyncCore
+
+/// Everything that operates on the player itself rather than on a sync:
+/// tidying names, clearing junk, finding duplicates, adding lyrics and art.
+@MainActor
+@Observable
+final class DeviceModel {
+    enum Busy: Equatable {
+        case idle
+        case scanning
+        case tidying
+        case enriching(String)
+    }
+
+    var busy: Busy = .idle
+    var status: String = ""
+    var progress: Double = 0
+
+    var tracks: [Track] = []
+    var tidyPlan: TidyPlan?
+    var duplicates: [DuplicateGroup] = []
+
+    /// Groups the user has chosen to act on, by group id.
+    var selectedDuplicates: Set<String> = []
+
+    var maxArtDimension = 500
+    var removeJunk = AppSettings.removeJunk
+
+    private(set) var deviceRoot: URL?
+    /// The one operation that can currently be undone, if any.
+    var undoSession: UndoSession?
+
+    var isBusy: Bool { busy != .idle }
+    var hasScanned: Bool { !tracks.isEmpty }
+
+    var reclaimableBytes: Int64 {
+        duplicates.filter { selectedDuplicates.contains($0.id) }
+                  .reduce(0) { $0 + $1.wastedBytes }
+    }
+
+    /// Forget the previous player's scan when a different one is selected
+    /// (or the selected one is unplugged), so tidy, duplicate cleanup and
+    /// undo can never act on a device other than the one on screen.
+    func deviceChanged(to root: URL?) {
+        guard root?.standardizedFileURL != deviceRoot?.standardizedFileURL else { return }
+        guard !isBusy else { return }
+        deviceRoot = root
+        tracks = []
+        tidyPlan = nil
+        duplicates = []
+        selectedDuplicates = []
+        progress = 0
+        undoSession = root.flatMap { UndoLog.mostRecent(deviceRoot: $0) }
+        status = ""
+    }
+
+    /// Read everything on the player. Nothing is modified.
+    func scan(deviceRoot root: URL) async {
+        deviceRoot = root
+        undoSession = UndoLog.mostRecent(deviceRoot: root)
+        busy = .scanning
+        status = "Reading the player…"
+        progress = 0
+
+        let found = await Task.detached(priority: .userInitiated) {
+            await LibraryScanner().scan(root: root)
+        }.value
+        tracks = found
+
+        guard !found.isEmpty else {
+            status = "No audio found on the player."
+            busy = .idle
+            return
+        }
+
+        status = "Working out what to tidy…"
+        let plan = await Task.detached(priority: .userInitiated) {
+            DeviceTidy().plan(deviceRoot: root, tracks: found)
+        }.value
+        tidyPlan = plan
+
+        let dupes = await Task.detached(priority: .userInitiated) {
+            Duplicates().find(in: found)
+        }.value
+        duplicates = dupes
+        selectedDuplicates = []
+
+        status = "\(found.count) track(s) · \(plan.moves.count) to rename · "
+               + "\(plan.junk.count) junk file(s) · \(dupes.count) duplicate group(s)"
+        busy = .idle
+    }
+
+    /// Rename files into the standard layout and clear macOS junk.
+    func applyTidy() async {
+        guard let root = deviceRoot, let plan = tidyPlan else { return }
+        busy = .tidying
+        progress = 0
+
+        let keepJunk = !removeJunk
+        let result = await Task.detached(priority: .userInitiated) { [weak self] in
+            DeviceTidy().apply(plan, deviceRoot: root, removeJunk: !keepJunk) { done, total in
+                Task { @MainActor in
+                    self?.progress = total > 0 ? Double(done) / Double(total) : 1
+                    self?.status = "\(done) of \(total)…"
+                }
+            }
+        }.value
+
+        status = "Renamed \(result.moved), removed \(result.junkRemoved) junk file(s) "
+               + "(\(ByteFormat.string(result.bytesFreed))), "
+               + "\(result.directoriesRemoved) empty folder(s), "
+               + "\(result.leftoverFoldersRemoved) leftover folder(s)"
+               + (result.coversSalvaged > 0 ? " (\(result.coversSalvaged) cover(s) salvaged)" : "") + "."
+        if !result.failures.isEmpty {
+            status += " \(result.failures.count) could not be moved."
+        }
+        busy = .idle
+
+        // Paths changed underneath us, so the old scan is stale. This also
+        // refreshes undoSession to the tidy we just ran.
+        await scan(deviceRoot: root)
+    }
+
+    /// Reverse the most recent tidy or duplicate cleanup. Only ever the
+    /// single most recent one — starting a new destructive operation
+    /// permanently discards whatever this would have restored.
+    func undoLastOperation() async -> UndoLog.UndoOutcome? {
+        guard let root = deviceRoot else { return nil }
+        let outcome = UndoLog.undoMostRecent(deviceRoot: root)
+        await scan(deviceRoot: root)
+        return outcome
+    }
+
+    /// Permanently discard the undoable operation without restoring it,
+    /// freeing the space it was holding right away.
+    func forgetUndoSession() {
+        guard let root = deviceRoot else { return }
+        UndoLog.forgetMostRecent(deviceRoot: root)
+        undoSession = nil
+    }
+
+    /// Build playlists from mood/tempo/genre tags already on the tracks —
+    /// no network involved, and tracks missing a tag are simply skipped.
+    func buildSmartPlaylists(moods: Bool, bpm: Bool, genres: Bool) async {
+        guard let root = deviceRoot, !tracks.isEmpty else { return }
+        let all = tracks
+        let result = await Task.detached(priority: .userInitiated) {
+            try? SmartPlaylistBuilder().writeAll(
+                tracks: all, deviceRoot: root, moods: moods, bpm: bpm, genres: genres)
+        }.value
+
+        guard let result, !result.written.isEmpty else {
+            status = "No mood/tempo/genre tags found (or not enough tracks for a playlist)."
+            return
+        }
+        status = "Wrote \(result.written.count) playlist(s): "
+               + result.written.keys.sorted().joined(separator: ", ")
+    }
+
+    /// Add lyrics and missing covers to what is already on the player.
+    func enrich(lyrics: Bool, covers: Bool) async {
+        guard let root = deviceRoot, !tracks.isEmpty else { return }
+        guard lyrics || covers else { return }
+
+        let all = tracks
+        let limit = maxArtDimension
+        let enricher = Enricher(maxArtDimension: limit, inPlace: true)
+
+        if covers {
+            busy = .enriching("covers")
+            status = "Checking which albums have no art…"
+
+            let reports = await Task.detached(priority: .userInitiated) {
+                await TrackHealth(maxEmbeddedArtPixels: limit).checkAll(all)
+            }.value
+
+            var withArt: Set<String> = []
+            for r in reports where r.hasEmbeddedArt {
+                withArt.insert(FATName.foldedKey(
+                    "\(r.track.effectiveAlbumArtist)/\(r.track.effectiveAlbum)"))
+            }
+            var missing: Set<String> = []
+            for t in all {
+                let key = FATName.foldedKey("\(t.effectiveAlbumArtist)/\(t.effectiveAlbum)")
+                if !withArt.contains(key) { missing.insert(key) }
+            }
+
+            if missing.isEmpty {
+                status = "Every album already has a cover."
+            } else {
+                let result = await enricher.addCovers(
+                    for: all, albumsMissingArt: missing, deviceRoot: root
+                ) { [weak self] done, total, label in
+                    Task { @MainActor in
+                        self?.progress = total > 0 ? Double(done) / Double(total) : 1
+                        self?.status = "Art \(done)/\(total) — \(label)"
+                    }
+                }
+                status = "Embedded art into \(result.coversEmbedded) file(s)"
+                       + (result.coversFromLocalFile > 0
+                          ? " (\(result.coversFromLocalFile) from a local cover file)" : "") + "."
+            }
+        }
+
+        if lyrics {
+            busy = .enriching("lyrics")
+            let result = await enricher.addLyrics(for: all, deviceRoot: root) { [weak self] done, total, title in
+                Task { @MainActor in
+                    self?.progress = total > 0 ? Double(done) / Double(total) : 1
+                    self?.status = "Lyrics \(done)/\(total) — \(title)"
+                }
+            }
+            status = "Wrote \(result.lyricsWritten) lyrics file(s); "
+                   + "\(result.lyricsNotFound) not found."
+        }
+
+        progress = 1
+        busy = .idle
+    }
+
+    /// Delete the non-recommended copies in the selected duplicate groups.
+    /// Only ever removes files the user explicitly selected. Nothing is
+    /// really gone right away — it moves into quarantine, undoable via
+    /// `undoLastOperation()` until the next tidy or cleanup runs.
+    func deleteSelectedDuplicates() async -> (removed: Int, freed: Int64, failed: Int) {
+        var removed = 0, failed = 0
+        var freed: Int64 = 0
+        guard let root = deviceRoot else { return (0, 0, 0) }
+        let undo = UndoRecorder(deviceRoot: root)
+
+        for group in duplicates where selectedDuplicates.contains(group.id) {
+            guard let keeper = group.recommendedKeeper(onDeviceRoot: root) else { continue }
+            for track in group.tracks where track.sourceURL != keeper.sourceURL {
+                let path = SyncEngine().devicePath(of: track.sourceURL, root: root)
+                if undo.quarantine(track.sourceURL, path: path) {
+                    removed += 1
+                    freed += track.fileSize
+                } else {
+                    failed += 1
+                }
+            }
+        }
+
+        if removed > 0 {
+            undo.finish(label: "remove duplicates")
+            await scan(deviceRoot: root)
+        }
+        return (removed, freed, failed)
+    }
+}
