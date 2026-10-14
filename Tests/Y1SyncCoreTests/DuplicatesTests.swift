@@ -230,3 +230,44 @@ final class DuplicateVersionTests: XCTestCase {
         ]).count, 1)
     }
 }
+
+final class DuplicateAutoCleanTests: XCTestCase {
+    private func t(_ name: String, album: String?, ext: String = "flac", size: Int64 = 1000,
+                   rate: Int? = 44_100, bits: Int? = 16, artist: String = "A") -> Track {
+        Track(sourceURL: URL(fileURLWithPath: "/m/\(name).\(ext)"), title: "Song", artist: artist,
+              album: album, durationSeconds: 200, fileSize: size,
+              codec: ext.uppercased(), sampleRate: rate, bitDepth: bits)
+    }
+
+    func testSameSongSameAlbumIsSafe() {
+        let g = DuplicateGroup(key: "k", tracks: [t("a", album: "Siamese Dream"),
+                                                  t("b", album: "Siamese Dream (UK Caroline)")])
+        XCTAssertTrue(g.isSafeToAutoClean())
+    }
+
+    func testMissingAlbumTagDoesNotBlock() {
+        let g = DuplicateGroup(key: "k", tracks: [t("a", album: "Album"), t("b", album: nil)])
+        XCTAssertTrue(g.isSafeToAutoClean())
+    }
+
+    func testDifferentAlbumsNeedADecision() {
+        let g = DuplicateGroup(key: "k", tracks: [t("a", album: "Album"), t("b", album: "Greatest Hits")])
+        XCTAssertFalse(g.isSafeToAutoClean())
+    }
+
+    func testPlayableCopyBeatsLargerOneOverTheLimit() {
+        let hiRes = t("hi", album: "X", size: 90_000, rate: 192_000, bits: 24)
+        let cd = t("cd", album: "X", size: 30_000)
+        let g = DuplicateGroup(key: "k", tracks: [hiRes, cd])
+        XCTAssertEqual(g.keeper(limits: .none)?.sourceURL, hiRes.sourceURL)
+        let limits = PlayerLimits(maxSampleRate: 48_000)
+        XCTAssertEqual(g.keeper(limits: limits)?.sourceURL, cd.sourceURL)
+        XCTAssertTrue(g.isSafeToAutoClean(limits: limits))
+    }
+
+    func testNotSafeWhenNoCopyIsPlayable() {
+        let g = DuplicateGroup(key: "k", tracks: [t("a", album: "X", rate: 192_000, bits: 24),
+                                                  t("b", album: "X", rate: 96_000, bits: 24)])
+        XCTAssertFalse(g.isSafeToAutoClean(limits: PlayerLimits(maxSampleRate: 48_000)))
+    }
+}

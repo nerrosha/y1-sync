@@ -19,8 +19,15 @@ public struct DuplicateGroup: Sendable, Identifiable {
     /// whatever order the scan happened to return files in — silently
     /// keeping a copy mistagged into the wrong artist/album folder over the
     /// correctly tagged one.
-    public var recommendedKeeper: Track? {
+    public var recommendedKeeper: Track? { keeper(limits: .none) }
+
+    /// Same choice, but a copy the player can play always beats one it cannot
+    /// (a 192 kHz file the player rejects must never be kept over a playable one).
+    public func keeper(limits: PlayerLimits) -> Track? {
         tracks.max { a, b in
+            let aOK = limits.problem(for: a) == nil ? 1 : 0
+            let bOK = limits.problem(for: b) == nil ? 1 : 0
+            if aOK != bOK { return aOK < bOK }
             let aLossless = Duplicates.isLossless(a) ? 1 : 0
             let bLossless = Duplicates.isLossless(b) ? 1 : 0
             if aLossless != bLossless { return aLossless < bLossless }
@@ -52,8 +59,12 @@ public struct DuplicateGroup: Sendable, Identifiable {
     /// the choice falls to scan order and can recommend deleting the
     /// well-organised copy while keeping the stray one, leaving the library
     /// worse until the user notices and re-runs tidy.
-    public func recommendedKeeper(onDeviceRoot deviceRoot: URL, layout: DeviceLayout = DeviceLayout()) -> Track? {
+    public func recommendedKeeper(onDeviceRoot deviceRoot: URL, layout: DeviceLayout = DeviceLayout(),
+                                  limits: PlayerLimits = .none) -> Track? {
         tracks.max { a, b in
+            let aOK = limits.problem(for: a) == nil ? 1 : 0
+            let bOK = limits.problem(for: b) == nil ? 1 : 0
+            if aOK != bOK { return aOK < bOK }
             let aLossless = Duplicates.isLossless(a) ? 1 : 0
             let bLossless = Duplicates.isLossless(b) ? 1 : 0
             if aLossless != bLossless { return aLossless < bLossless }
@@ -71,6 +82,30 @@ public struct DuplicateGroup: Sendable, Identifiable {
         let expected = layout.path(for: track)
         let actual = SyncEngine().devicePath(of: track.sourceURL, root: deviceRoot)
         return FATName.foldedKey(expected) == FATName.foldedKey(actual)
+    }
+
+    /// Whether removing the extras can be done without asking: every copy is
+    /// the same song on the same album (a copy with no album tag counts as
+    /// belonging to it), and the copy kept is one the player can play. The
+    /// same song on a single and on an album, or on a compilation, is left
+    /// for the user — those are placements they may want both of.
+    public func isSafeToAutoClean(deviceRoot: URL? = nil, limits: PlayerLimits = .none) -> Bool {
+        let albums = Set(tracks.compactMap { t -> String? in
+            guard t.album.flatMap(Track.nonBlank) != nil else { return nil }
+            return Duplicates.normalise(t.effectiveAlbum)
+        })
+        guard albums.count <= 1 else { return false }
+        let artists = Set(tracks.map { Duplicates.normalise($0.effectiveAlbumArtist) })
+        guard artists.count == 1 else { return false }
+        let kept = deviceRoot.map { recommendedKeeper(onDeviceRoot: $0, limits: limits) } ?? keeper(limits: limits)
+        guard let kept, limits.problem(for: kept) == nil else { return false }
+        return true
+    }
+
+    /// Bytes freed when only the keeper stays, for the given limits.
+    public func wastedBytes(limits: PlayerLimits) -> Int64 {
+        let kept = keeper(limits: limits)
+        return tracks.filter { $0.sourceURL != kept?.sourceURL }.reduce(0) { $0 + $1.fileSize }
     }
 
     public var wastedBytes: Int64 {

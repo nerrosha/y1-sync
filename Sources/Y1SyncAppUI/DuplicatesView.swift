@@ -29,6 +29,7 @@ struct DuplicatesView: View {
                                ? "Every song on the player is stored once."
                                : "Scan the player on the Device tab to look for duplicates.")
             } else {
+                autoCleanBox
                 ScrollView {
                     LazyVStack(spacing: Pixel.gap) {
                         ForEach(model.duplicates) { group in
@@ -70,7 +71,7 @@ struct DuplicatesView: View {
                 .lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
             if !model.duplicates.isEmpty {
-                let total = model.duplicates.reduce(Int64(0)) { $0 + $1.wastedBytes }
+                let total = model.duplicates.reduce(Int64(0)) { $0 + $1.wastedBytes(limits: model.limits) }
                 Tag(text: countLabel(model.duplicates.count, "group"))
                 Tag(text: "\(ByteFormat.string(total)) recoverable", kind: .good)
             }
@@ -87,10 +88,48 @@ struct DuplicatesView: View {
         }
     }
 
+    // MARK: - Automatic clean-up
+
+    /// One button for the common case: the same song, same album, stored twice.
+    @ViewBuilder
+    private var autoCleanBox: some View {
+        let safe = model.safeDuplicates
+        let rest = model.duplicates.count - safe.count
+        let freed = safe.reduce(Int64(0)) { $0 + $1.wastedBytes(limits: model.limits) }
+        PixelBox(title: "Clean up automatically") {
+            if safe.isEmpty {
+                Text("None of these can be cleaned without a decision: each is the same song on "
+                     + "different albums, or has no copy the player can play. Check them below.")
+                    .font(.system(size: 13)).foregroundStyle(p.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("\(countLabel(safe.count, "group")) are the same song on the same album. "
+                     + "The best copy stays (lossless first, then larger, then the one in the right folder, "
+                     + "and always one the player can play); the rest go to quarantine and free "
+                     + ByteFormat.string(freed) + "."
+                     + (rest > 0 ? " The other \(rest) are marked “check first” — they are on different albums." : ""))
+                    .font(.system(size: 13)).foregroundStyle(p.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    UISound.open.play()
+                    outcome = nil
+                    model.selectSafeDuplicates()
+                    confirmDelete = true
+                } label: {
+                    Label("Clean up \(countLabel(safe.count, "group"))", systemImage: "sparkles")
+                }
+                .buttonStyle(PixelButtonStyle(kind: confirmDelete ? .normal : .primary))
+                .fixedSize()
+                .disabled(model.isBusy)
+            }
+        }
+    }
+
     // MARK: - Group
 
     private func groupBox(_ group: DuplicateGroup) -> some View {
-        let keeper = model.deviceRoot.map { group.recommendedKeeper(onDeviceRoot: $0) } ?? group.recommendedKeeper
+        let keeper = model.deviceRoot.map { group.recommendedKeeper(onDeviceRoot: $0, limits: model.limits) }
+            ?? group.keeper(limits: model.limits)
         let isOn = model.selectedDuplicates.contains(group.id)
 
         return VStack(alignment: .leading, spacing: 8) {
@@ -103,7 +142,8 @@ struct DuplicatesView: View {
                     UISound.cursor.play()
                 }
                 Spacer(minLength: 8)
-                Tag(text: "frees \(ByteFormat.string(group.wastedBytes))")
+                if !model.isSafeToAutoClean(group) { Tag(text: "check first", kind: .warn) }
+                Tag(text: "frees \(ByteFormat.string(group.wastedBytes(limits: model.limits)))")
             }
 
             ForEach(group.tracks.sorted { $0.fileSize > $1.fileSize }, id: \.sourceURL) { track in
@@ -159,7 +199,7 @@ struct DuplicatesView: View {
                     Label("Remove extra copies", systemImage: "trash")
                 }
                 // Only one primary at a time: the open dialog owns it.
-                .buttonStyle(PixelButtonStyle(kind: confirmDelete ? .normal : .primary))
+                .buttonStyle(PixelButtonStyle(kind: .normal))
                 .fixedSize()
                 .disabled(model.selectedDuplicates.isEmpty || model.isBusy)
             }

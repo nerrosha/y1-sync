@@ -55,7 +55,21 @@ final class DeviceModel {
 
     var reclaimableBytes: Int64 {
         duplicates.filter { selectedDuplicates.contains($0.id) }
-                  .reduce(0) { $0 + $1.wastedBytes }
+                  .reduce(0) { $0 + $1.wastedBytes(limits: limits) }
+    }
+
+    /// Groups that can be cleaned without asking (see `isSafeToAutoClean`).
+    var safeDuplicates: [DuplicateGroup] {
+        duplicates.filter { $0.isSafeToAutoClean(deviceRoot: deviceRoot, limits: limits) }
+    }
+
+    func isSafeToAutoClean(_ group: DuplicateGroup) -> Bool {
+        group.isSafeToAutoClean(deviceRoot: deviceRoot, limits: limits)
+    }
+
+    /// Tick exactly the groups that are safe to clean up.
+    func selectSafeDuplicates() {
+        selectedDuplicates = Set(safeDuplicates.map(\.id))
     }
 
     /// Forget the previous player's scan when a different one is selected
@@ -399,7 +413,7 @@ final class DeviceModel {
         let undo = UndoRecorder(deviceRoot: root)
 
         for group in duplicates where selectedDuplicates.contains(group.id) {
-            guard let keeper = group.recommendedKeeper(onDeviceRoot: root) else { continue }
+            guard let keeper = group.recommendedKeeper(onDeviceRoot: root, limits: limits) else { continue }
             for track in group.tracks where track.sourceURL != keeper.sourceURL {
                 let path = SyncEngine().devicePath(of: track.sourceURL, root: root)
                 if undo.quarantine(track.sourceURL, path: path) {
