@@ -9,6 +9,8 @@ public enum UndoEntry: Codable, Sendable, Equatable {
     case quarantined(originalPath: String, quarantineName: String)
     /// An album tag rewritten in place — reversed by writing `album` back.
     case retagged(path: String, album: String)
+    /// Tags rewritten in place — reversed by writing `old` back and removing `remove`.
+    case retaggedFields(path: String, old: [String: String], remove: [String])
 }
 
 public struct UndoSession: Codable, Sendable, Identifiable {
@@ -58,9 +60,9 @@ public final class UndoRecorder: @unchecked Sendable {
         return true
     }
 
-    public func recordRetag(path: String, oldAlbum: String) {
+    public func recordRetag(path: String, old: [String: String], remove: [String]) {
         lock.lock()
-        entries.append(.retagged(path: path, album: oldAlbum))
+        entries.append(.retaggedFields(path: path, old: old, remove: remove))
         lock.unlock()
     }
 
@@ -147,6 +149,14 @@ public enum UndoLog {
                     try fm.moveItem(at: src, to: dst)
                     outcome.restored += 1
                 } catch { outcome.failed.append(from) }
+
+            case .retaggedFields(let path, let old, let remove):
+                let file = full(path)
+                var back: [String: String?] = old.mapValues { Optional($0) }
+                for name in remove { back[name] = .some(nil) }
+                if fm.fileExists(atPath: file.path), TagEditor.write(back, in: file) {
+                    outcome.restored += 1
+                } else { outcome.failed.append(path) }
 
             case .retagged(let path, let album):
                 let file = full(path)

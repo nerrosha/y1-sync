@@ -33,6 +33,8 @@ final class DeviceModel {
     var playerList: PlayerLibraryCache.Status?
     /// Albums that browse as several although they are one (typo, edition, stray single).
     var similarAlbums: [SimilarAlbumGroup] = []
+    /// Artists spelled more than one way.
+    var similarArtists: [SimilarArtistGroup] = []
 
     /// Groups the user has chosen to act on, by group id.
     var selectedDuplicates: Set<String> = []
@@ -65,6 +67,7 @@ final class DeviceModel {
         brokenFiles = nil
         playerList = nil
         similarAlbums = []
+        similarArtists = []
         selectedDuplicates = []
         progress = 0
         undoSession = root.flatMap { UndoLog.mostRecent(deviceRoot: $0) }
@@ -97,6 +100,7 @@ final class DeviceModel {
         tidyPlan = plan
         playerList = PlayerLibraryCache.status(deviceRoot: root, deviceTracks: found)
         similarAlbums = SimilarAlbums().find(in: found)
+        similarArtists = SimilarArtists().find(in: found)
 
         let dupes = await Task.detached(priority: .userInitiated) {
             Duplicates().find(in: found)
@@ -131,6 +135,33 @@ final class DeviceModel {
         // Tags changed in place, so the player's copy of them is stale.
         let engine = SyncEngine()
         let pairs = self.tracks.filter { t in group.variants.contains { v in v.tracks.contains { $0.sourceURL == t.sourceURL } } }
+            .map { (track: $0, devicePath: engine.devicePath(of: $0.sourceURL, root: root)) }
+        _ = try? PlayerLibraryCache.update(deviceRoot: root, adding: pairs, dropDeadEntries: false, replaceExisting: true)
+        playerList = PlayerLibraryCache.status(deviceRoot: root, deviceTracks: self.tracks)
+        status = text + " Tidy the player to move them into one folder."
+    }
+
+    /// Give an artist one spelling everywhere (album artist; a track's own
+    /// artist only where it was that exact spelling). Tags only; Undo restores.
+    func mergeArtists(_ group: SimilarArtistGroup, into name: String) async {
+        guard let root = deviceRoot, !isBusy else { return }
+        busy = .tidying
+        status = "Merging into “\(name)”…"
+        let tracks = group.variants.flatMap(\.tracks)
+        let out = await Task.detached(priority: .userInitiated) { () -> TagEditor.Outcome in
+            let undo = UndoRecorder(deviceRoot: root)
+            let r = ArtistRetagger.setAlbumArtist(name, for: tracks, deviceRoot: root, undo: undo)
+            undo.finish(label: "merge artists")
+            return r
+        }.value
+        busy = .idle
+
+        var text = "\(countLabel(out.changed, "file")) now under “\(name)”."
+        if !out.failed.isEmpty { text += " \(out.failed.count) could not be changed." }
+        await scan(deviceRoot: root)
+        let engine = SyncEngine()
+        let touched = Set(tracks.map(\.sourceURL))
+        let pairs = self.tracks.filter { touched.contains($0.sourceURL) }
             .map { (track: $0, devicePath: engine.devicePath(of: $0.sourceURL, root: root)) }
         _ = try? PlayerLibraryCache.update(deviceRoot: root, adding: pairs, dropDeadEntries: false, replaceExisting: true)
         playerList = PlayerLibraryCache.status(deviceRoot: root, deviceTracks: self.tracks)

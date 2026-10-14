@@ -1,77 +1,38 @@
 import Foundation
 
-/// Rewrites the album tag of files in place. Only tags change — the audio bytes
-/// are streamed through untouched — and each file is swapped in atomically.
+/// Album-title edits (merging a split album) — a thin layer over `TagEditor`.
 public enum AlbumRetagger {
-    public struct Outcome: Sendable {
-        public var changed = 0
-        public var failed: [String] = []
-        public init() {}
-    }
+    public typealias Outcome = TagEditor.Outcome
 
     /// The album tag as stored in the file, nil if unreadable or unsupported.
     public static func currentAlbum(of url: URL) -> String? {
-        if FLAC.isFLAC(url) { return FLAC.read(url, includePictures: false)?["ALBUM"] }
-        guard url.pathExtension.lowercased() == "mp3",
-              let data = try? Data(contentsOf: url, options: .mappedIfSafe),
-              let tag = ID3v2.parse(data) else { return nil }
-        return tag.frames.first { $0.id == "TALB" }.flatMap { text(of: $0.body) }
+        TagEditor.read(url, fields: ["ALBUM"])["ALBUM"]
     }
 
-    /// A text frame body: one encoding byte, then the string.
-    static func text(of body: Data) -> String? {
-        guard let enc = body.first else { return nil }
-        let raw = body.dropFirst()
-        let encoding: String.Encoding = switch enc {
-        case 1: .utf16
-        case 2: .utf16BigEndian
-        case 3: .utf8
-        default: .isoLatin1
-        }
-        return String(data: raw, encoding: encoding)?
-            .trimmingCharacters(in: CharacterSet(charactersIn: "\0")).nonEmpty
-    }
-
-    /// Set the album tag; false when the format cannot be rewritten or it failed.
     @discardableResult
     public static func setAlbum(_ album: String, in url: URL) -> Bool {
-        if FLAC.isFLAC(url) {
-            guard let meta = FLAC.read(url, includePictures: false) else { return false }
-            var fields = meta.fields
-            fields["ALBUM"] = album
-            let temp = url.deletingLastPathComponent().appendingPathComponent(".y1sync-tag-\(UUID().uuidString).flac")
-            defer { try? FileManager.default.removeItem(at: temp) }
-            guard (try? FLAC.rewrite(from: url, to: temp, fields: fields)) == true,
-                  (try? FileManager.default.replaceItemAt(url, withItemAt: temp)) != nil else { return false }
-            return true
-        }
-        guard url.pathExtension.lowercased() == "mp3",
-              let data = try? Data(contentsOf: url),
-              let out = ID3v2.rewriting(data, textFrames: ["TALB": album]) else { return false }
-        return (try? out.write(to: url, options: .atomic)) != nil
+        TagEditor.write(["ALBUM": album], in: url)
     }
 
-    /// Retag `tracks` (files on the player) and record the old value of each in
-    /// `undo`, so Undo can put every title back.
+    /// Give every track the same album title, recording each old one for Undo.
     public static func setAlbum(_ album: String, for tracks: [Track], deviceRoot: URL,
                                 undo: UndoRecorder? = nil) -> Outcome {
-        var outcome = Outcome()
-        let engine = SyncEngine()
-        for t in tracks {
-            let path = engine.devicePath(of: t.sourceURL, root: deviceRoot)
-            guard let old = currentAlbum(of: t.sourceURL) ?? t.album else { outcome.failed.append(path); continue }
-            if old == album { continue }
-            if setAlbum(album, in: t.sourceURL) {
-                undo?.recordRetag(path: path, oldAlbum: old)
-                outcome.changed += 1
-            } else {
-                outcome.failed.append(path)
-            }
-        }
-        return outcome
+        TagEditor.apply({ _ in ["ALBUM": album] }, to: tracks, deviceRoot: deviceRoot, undo: undo)
     }
 }
 
-private extension String {
-    var nonEmpty: String? { isEmpty ? nil : self }
+/// Artist-name edits (merging one artist spelled two ways).
+public enum ArtistRetagger {
+    /// Set the album artist of every track to `name`. A track's own ARTIST is
+    /// changed too, but only when it is exactly the spelling being replaced —
+    /// "A feat. B" credits are never touched.
+    public static func setAlbumArtist(_ name: String, for tracks: [Track], deviceRoot: URL,
+                                      undo: UndoRecorder? = nil) -> TagEditor.Outcome {
+        TagEditor.apply({ t in
+            var changes = ["ALBUMARTIST": name]
+            let replaced = t.albumArtist ?? t.artist
+            if let replaced, t.artist == replaced, replaced != name { changes["ARTIST"] = name }
+            return changes
+        }, to: tracks, deviceRoot: deviceRoot, undo: undo)
+    }
 }

@@ -13,6 +13,8 @@ struct DeviceView: View {
     @State private var confirmRepair = false
     @State private var chosenAlbum: [String: String] = [:]
     @State private var pendingMerge: SimilarAlbumGroup?
+    @State private var chosenArtist: [String: String] = [:]
+    @State private var pendingArtistMerge: SimilarArtistGroup?
     @State private var confirmRemoveBroken = false
     // Remembered between launches.
     @AppStorage("deviceWantLyrics") private var wantLyrics = true
@@ -54,6 +56,7 @@ struct DeviceView: View {
                             .frame(maxWidth: .infinity)
                         VStack(spacing: Pixel.gap) {
                             songListSection
+                            similarArtistsSection
                             similarAlbumsSection
                             healthSection
                             enrichSection
@@ -104,6 +107,17 @@ struct DeviceView: View {
             UISound.confirm.play()
             let title = chosenAlbum[group.id] ?? group.suggested
             Task { await model.mergeAlbums(group, into: title); UISound.success.play() }
+        }
+        .pixelConfirm(isPresented: Binding(get: { pendingArtistMerge != nil }, set: { if !$0 { pendingArtistMerge = nil } }),
+                      title: "Merge artists",
+                      message: "Sets the artist of \(pendingArtistMerge.map { countLabel($0.trackCount, "song") } ?? "") to "
+                          + "“\(pendingArtistMerge.map { chosenArtist[$0.id] ?? $0.suggested } ?? "")”. Only tags change, the "
+                          + "audio is untouched, and Undo puts every old spelling back.",
+                      confirmTitle: "Merge") {
+            guard let group = pendingArtistMerge else { return }
+            UISound.confirm.play()
+            let name = chosenArtist[group.id] ?? group.suggested
+            Task { await model.mergeArtists(group, into: name); UISound.success.play() }
         }
         .pixelConfirm(isPresented: $confirmRepair,
                       title: "Replace broken files",
@@ -269,6 +283,44 @@ struct DeviceView: View {
                 }
                 .buttonStyle(PixelButtonStyle(kind: .primary)).fixedSize()
                 .disabled(model.isBusy)
+            }
+        }
+    }
+
+    // MARK: - Similar artists
+
+    @ViewBuilder
+    private var similarArtistsSection: some View {
+        if !model.similarArtists.isEmpty {
+            PixelBox(title: "Artists spelled twice") {
+                Text("The player lists these as separate artists (and the card has a folder for each), "
+                     + "but the name is the same apart from “The” or capital letters. Pick the spelling "
+                     + "to keep; only the artist tags change.")
+                    .font(.system(size: 12)).foregroundStyle(p.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(model.similarArtists) { group in
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(group.variants) { v in
+                            let chosen = (chosenArtist[group.id] ?? group.suggested) == v.name
+                            Button { chosenArtist[group.id] = v.name; UISound.cursor.play() } label: {
+                                ListRow(selected: chosen) {
+                                    Text(v.name).font(.system(size: 12)).lineLimit(1)
+                                    Spacer(minLength: 6)
+                                    Text(countLabel(v.tracks.count, "song")).font(.system(size: 11)).opacity(0.8)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(v.name), \(countLabel(v.tracks.count, "song"))")
+                            .accessibilityAddTraits(chosen ? .isSelected : [])
+                        }
+                        Button("Merge into “\(chosenArtist[group.id] ?? group.suggested)”") {
+                            pendingArtistMerge = group
+                        }
+                        .buttonStyle(PixelButtonStyle(compact: true)).fixedSize()
+                        .disabled(model.isBusy)
+                    }
+                    .padding(.vertical, 4)
+                }
             }
         }
     }

@@ -18,6 +18,7 @@ func printUsage() {
       y1sync plan  <library-folder> [--device <name>] [--to <path>]
       y1sync sync  <library-folder> [--device <name>] [--to <path>] [--playlist <name>]
       y1sync undo  [--device <name>] [--to <path>] [--apply | --forget]
+      y1sync artists [--device <name>] [--to <path>]
       y1sync albums [--device <name>] [--to <path>]
       y1sync library [--device <name>] [--to <path>] [--apply]
       y1sync health [--device <name>] [--to <path>] [--library <folder>] [--repair] [--remove]
@@ -36,6 +37,8 @@ func printUsage() {
       enrich    Add lyrics and missing covers to what is already on the player.
       plan      Show what a sync would copy, without writing anything.
       sync      Copy missing tracks to the player.
+      artists   List artists filed under more than one spelling ("The X" and "X",
+                different capitals). Changes nothing.
       albums    List albums that are really one album split by their tags (a typo,
                 an edition, a single downloaded alone). Changes nothing.
       library   Compare the player's own song list (.y1_library_cache.json) with the
@@ -530,6 +533,16 @@ case "plan", "sync":
         fail(e.description)
     } catch {
         fail(error.localizedDescription)
+    }
+
+case "artists":
+    let target = resolveTarget(args)
+    let onCard = await LibraryScanner().scan(root: target)
+    let found = SimilarArtists().find(in: onCard)
+    if found.isEmpty { print("No artist is spelled two ways (\(onCard.count) tracks)."); break }
+    for g in found {
+        print("\(g.trackCount) tracks, suggested spelling “\(g.suggested)”")
+        for v in g.variants { print("    \(v.tracks.count)  “\(v.name)”") }
     }
 
 case "albums":
