@@ -157,7 +157,9 @@ final class DeviceModel {
         busy = .idle
 
         var text = "\(countLabel(out.changed, "file")) now under “\(name)”."
-        if !out.failed.isEmpty { text += " \(out.failed.count) could not be changed." }
+        if !out.failed.isEmpty {
+            text += " \(out.failed.count) could not be changed (unsupported or damaged file)."
+        }
         await scan(deviceRoot: root)
         let engine = SyncEngine()
         let touched = Set(tracks.map(\.sourceURL))
@@ -253,7 +255,11 @@ final class DeviceModel {
                + "\(result.leftoverFoldersRemoved) leftover folder(s)"
                + (result.coversSalvaged > 0 ? " (\(result.coversSalvaged) cover(s) salvaged)" : "") + "."
         if !result.failures.isEmpty {
-            status += " \(result.failures.count) could not be moved."
+            let clashes = result.failures.filter { $0.hasSuffix("already exists") }.count
+            status += " \(result.failures.count) could not be moved"
+            status += clashes > 0
+                ? " — \(clashes) already exist in the target folder (the same song is on the player twice). Remove the extra copies in the Dupes tab, then tidy again."
+                : "."
         }
         busy = .idle
 

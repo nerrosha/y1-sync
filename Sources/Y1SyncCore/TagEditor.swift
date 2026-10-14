@@ -21,6 +21,7 @@ public enum TagEditor {
             }
             return out
         }
+        if isMP4(url) { return MP4Tags.read(url, fields: fields) }
         guard url.pathExtension.lowercased() == "mp3",
               let data = try? Data(contentsOf: url, options: .mappedIfSafe),
               let tag = ID3v2.parse(data) else { return out }
@@ -48,6 +49,7 @@ public enum TagEditor {
                   (try? FileManager.default.replaceItemAt(url, withItemAt: temp)) != nil else { return false }
             return true
         }
+        if isMP4(url) { return MP4Tags.write(changes, in: url) }
         guard url.pathExtension.lowercased() == "mp3", let data = try? Data(contentsOf: url) else { return false }
         var frames: [String: String] = [:]
         for (name, value) in changes {
@@ -57,6 +59,8 @@ public enum TagEditor {
         guard !frames.isEmpty, let out = ID3v2.rewriting(data, textFrames: frames) else { return false }
         return (try? out.write(to: url, options: .atomic)) != nil
     }
+
+    static func isMP4(_ url: URL) -> Bool { ["m4a", "mp4", "m4b"].contains(url.pathExtension.lowercased()) }
 
     /// A text frame body: one encoding byte, then the string.
     static func text(of body: Data) -> String? {

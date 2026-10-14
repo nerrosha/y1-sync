@@ -60,8 +60,10 @@ private struct PixelConfirm: ViewModifier {
                                 .buttonStyle(PixelButtonStyle())
                                 .keyboardShortcut(.cancelAction)
                             Button(confirmTitle) {
-                                isPresented = false
+                                // Before dismissing: callers read the state that
+                                // the binding's setter clears on dismiss.
                                 onConfirm()
+                                isPresented = false
                             }
                             .buttonStyle(PixelButtonStyle(kind: .primary))
                             .keyboardShortcut(.defaultAction)
