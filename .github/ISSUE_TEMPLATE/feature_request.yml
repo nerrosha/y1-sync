@@ -1,0 +1,14 @@
+name: Idea or request
+description: Something you would like the app to do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: The problem first, then your idea for it.
+    validations: { required: true }
+  - type: input
+    id: firmware
+    attributes:
+      label: Your player firmware (if it matters)

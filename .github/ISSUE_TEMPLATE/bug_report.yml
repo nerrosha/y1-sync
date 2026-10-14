@@ -1,0 +1,26 @@
+name: Bug report
+description: Something did not work as expected
+labels: [bug]
+body:
+  - type: input
+    id: firmware
+    attributes:
+      label: Player firmware
+      description: Stock Innioasis, JJ Launcher, InniClassic, Rockbox… and its version. What does the Firmware row on the Sync tab say?
+    validations: { required: true }
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you saw. Screenshots help.
+    validations: { required: true }
+  - type: textarea
+    id: file
+    attributes:
+      label: If a file will not play
+      description: Its format (see the Formats box on the Device tab) and what the player says.

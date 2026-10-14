@@ -1,229 +1,150 @@
-# Y1 Sync
+<p align="center">
+  <img src="assets/icon.png" width="112" alt="Y1 Sync icon">
+</p>
 
-A macOS companion app for the Innioasis Y1. It scans a music library, works out
-what is missing on the player, and copies only that — checking files are
-playable and shrinking oversized cover art on the way.
+<h1 align="center">Y1 Sync</h1>
 
-Works with **stock Innioasis firmware** and **Rockbox-based firmware** (e.g.
-InnioClassic) — a `.rockbox` folder on the volume is auto-detected and
-preferred when picking among several connected drives. A couple of bits are
-Rockbox-specific and opt-in (see `--covers` below).
+<p align="center">
+  Keep your music library on an <b>Innioasis Y1</b> in order — from your Mac.<br>
+  Copies only what is missing, checks every file, fixes the mess, never deletes anything for good.
+</p>
 
-## Why it works this way
+<p align="center">
+  <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-black?style=flat-square">
+  <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-orange?style=flat-square">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square">
+  <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-none-brightgreen?style=flat-square">
+</p>
 
-The Y1 mounts as plain **USB mass storage** (not MTP), so this is ordinary file
-I/O against `/Volumes/<name>` — no drivers, no libusb. Three details drive most
-of the design:
+---
 
-- **FAT32 naming.** The volume is FAT32, which forbids `" * / : < > ? \ |`,
-  strips trailing dots and spaces, and reserves DOS names like `CON`. Copying a
-  file called `AC/DC – Live?.mp3` straight across either fails or lands under a
-  name the player can't open. Every path component is normalised first, and
-  because FAT is case-insensitive all comparisons fold case — otherwise every
-  sync re-copies the whole library.
-- **The folder tree is the UI.** The player browses the filesystem, so files are
-  laid out `Artist/Album/NN Title.ext` with zero-padded track numbers (else
-  "10" sorts before "2"). Compilations group by *album artist*, or one album
-  scatters into a folder per guest artist.
-- **FLAC needs its own parser.** AVFoundation does not expose Vorbis comments,
-  so a lossless library reads back as "Unknown Artist / Unknown Album" through
-  the common-metadata API. FLAC is parsed and rewritten directly.
-- **macOS hides its own litter.** Writing to a FAT volume creates `._name`
-  AppleDouble files, which macOS then folds into the file they describe —
-  invisible to `readdir`, `ls -a` and `FileManager`, but plainly visible to the
-  player. They can only be found by probing each sibling path.
-- **Cover art must be small.** Stock Innioasis firmware reads artwork from each
-  file's own tags, and a very large image can exhaust its memory — beyond about 1000 px the
-  player lags and can lock up. Oversized art is therefore resized and re-embedded
-  during the copy, rewriting only the ID3 tag so the audio frames pass through
-  byte-for-byte. **Your original files are never modified.**
-  (`--covers` additionally writes `cover.bmp` per album, which only Rockbox reads.)
-
-- **Broken files are caught before they're copied.** Header checks alone are not
-  enough: 3 KB of random bytes contains valid MPEG frame syncs, and AVFoundation
-  will happily report "1 audio track, 0.52s". Each file is therefore decoded
-  briefly to prove it yields real samples.
-
-## Usage
-
-Build:
-
-```bash
-./build-app.sh
-```
-
-That produces `build/Y1 Sync.app` and the `build/y1sync` CLI.
-
-The player **does not mount until you enable USB storage on the device itself** —
-this is the usual reason nothing appears.
-
-### App
-
-```bash
-open "build/Y1 Sync.app"
-```
-
-**Sync tab** — pick the player, drop a music folder in, hit **Scan and compare**
-to see exactly what would be copied, then **Sync to player**.
-
-**Results tab** — after a sync, every copied file is listed with tags showing
-what was fixed (`cover 1600x1600 → 1000x1000`, `lyrics added`, `album artist → …`),
-plus a section listing any files that were **skipped** and why. Select a file
-to play it **straight off the device**, with its embedded artwork and synced
-lyrics highlighting in time with the audio. Click any lyric line to seek there.
-This is the check that the files really are right, rather than trusting a
-summary count.
-
-**Device tab** — works on files already on the player, no source library
-needed: **tidy** renames everything into the consistent `Artist/Album/NN
-Title.ext` layout and clears junk (hidden `._*` sidecars, empty folders, and
-pre-tidy folders whose tracks have all moved out — any cover art left behind
-in one is copied to the new album folder first), and **enrich** fetches
-missing lyrics/cover art in place. Both show a dry-run plan first and ask for
-confirmation before touching anything.
-
-**Duplicates tab** — finds tracks that are the same recording under different
-names (tolerant of remaster/explicit-edition noise, but careful not to conflate
-a studio cut with a genuinely different version like a live or acoustic take),
-so you can delete the redundant copy or copies straight from the device.
-
-**Nothing tidy or the Duplicates tab removes is actually deleted right away.**
-It moves into a hidden quarantine folder on the device instead, and an "Undo"
-banner appears offering to put it straight back. Only the single most recent
-run is kept — starting another tidy or cleanup permanently drops whatever the
-previous one was holding, which is also what actually frees the space.
-
-**Smart playlists**, in the Device tab, build `.m3u8` playlists from mood,
-tempo (BPM) and genre tags already on the files — the kind beets or Picard's
-AcousticBrainz plugin write. No network call, and a track missing the tag is
-just skipped rather than miscategorized.
-
-### CLI
-
-```bash
-y1sync devices                          # list candidate volumes
-y1sync tidy                             # rename device files consistently (dry run)
-y1sync tidy   --apply                   # ...actually do it
-y1sync enrich --lyrics --fetch-covers   # add lyrics/art to what's already there
-y1sync playlists                        # build mood/tempo/genre playlists from tags
-y1sync undo                             # show what the last tidy/dupes --apply would restore
-y1sync undo --apply                     # ...restore it
-y1sync scan  ~/Music                    # read tags, show what was found
-y1sync check ~/Music                    # broken files, huge covers, tag problems, misplaced files
-y1sync plan  ~/Music                    # dry run: what would be copied
-y1sync sync  ~/Music --playlist "Daily" # copy, and write a playlist
-```
-
-Options: `--device <name>` to disambiguate, `--to <path>` to target a plain
-folder (handy for testing), `--max-art <px>` to change the cover limit,
-`--keep-art` to leave art untouched, `--copy-broken` to copy unplayable files
-anyway, `--split-albums` to skip album-artist unification, `--covers` to also
-write `cover.bmp` (Rockbox only).
+The Y1 shows your music from the files and tags on its card, so a card that has grown
+over time turns into a mess: the same album split in two, an artist spelled two ways,
+songs the player never lists, cut-off files that will not play, hundreds of megabytes
+of duplicates. **Y1 Sync** is a native Mac app (and a command-line tool) that syncs a
+library to the player and cleans up what is already there.
 
 ## What it does
 
-- Scans MP3, FLAC, OGG, Opus, M4A, AAC, WAV, WavPack, APE, Musepack, AIFF
-- Verifies every file decodes; skips empty, truncated and corrupt ones
-- Resizes oversized embedded cover art (default 1000px; InniClassic shows covers large and asks for 600–1000 px) during the copy
-- Unifies album artists so a compilation lands in one folder, not one per guest
-- Reports duplicate/missing track numbers, gaps, and untagged files
-- Resizes oversized art in **MP3 and FLAC**, rewriting only the tag so audio is
-  preserved byte-for-byte
-- Tidies files already on the player into one consistent layout, clears the
-  hidden macOS `._*` sidecars the player would otherwise list, and removes
-  pre-tidy folders left holding only a stray cover/log once their tracks have
-  moved out (salvaging the cover first)
-- Finds duplicate recordings (tolerant of remaster noise, not fooled by a live
-  or acoustic version of the same song) so you can delete the redundant copy
-- Fetches synced lyrics from LRCLIB and writes `.lrc` files the player reads
-- Finds missing album art on the Cover Art Archive and embeds it
-- Reads tags via AVFoundation — no third-party dependencies
-- Copies only what's missing, comparing by destination path and file size
-- Detects truncated files from an interrupted copy and replaces them
-- Copies to a temp name then moves into place, so a failure never leaves a
-  half-written file that later looks complete
-- Reports name collisions instead of silently overwriting
-- Writes `.m3u8` playlists with device-absolute paths, and repairs any
-  existing playlist whose paths a tidy run just renamed
-- Builds mood/tempo/genre playlists from tags already on the files
-- Flags a track whose own tags disagree with the rest of its physical
-  folder — the signature of a file that ended up mixed into the wrong place
-  while keeping its own, internally consistent tags
-- Prefers a cover image already sitting in an album's own folder over
-  fetching one online
-- Quarantines rather than deletes, so tidy and duplicate cleanup are undoable
-  until the next destructive run
+**Sync**
+- Compares your library with the player and copies **only what is missing**. Run it again and nothing is copied twice.
+- Shows **what will change before anything is written** — per album, with sizes and the reason for every replacement.
+- Every copied file is flushed to the card and **read back and verified** before it is put in place. A failed or interrupted copy never replaces a good file. **Stop** any time; finished files stay.
+- Checks files first and skips empty, truncated and corrupt ones.
+- Shrinks oversized embedded cover art on the copy (your library files are never touched) and adds synced lyrics (`.lrc`) and missing covers on request.
+- Speed and time left while it runs; unchanged files are not re-read on later scans, so scanning a full card takes a fraction of a second instead of over a minute.
 
-## Online lookups
+**Fix what is already on the player**
+- **Tidy** names into one `Artist/Album/NN Title` layout and clears the hidden macOS `._*` files the player would list.
+- **Albums and artists spelled twice** ("Malcom Todd" / "Malcolm Todd", "The Smashing Pumpkins" / "Smashing Pumpkins") are found and merged by changing only the tags. Merges are **remembered**, so the next sync does not copy the old spelling back.
+- **Broken files**: decodes the start and end of every file, finds cut-off copies, replaces them from your library when an intact copy exists.
+- **Duplicates**: the same song stored twice — one button cleans up the safe groups (same song, same album) and keeps the best copy; the rest are left for you to decide.
+- The player's own **song list** is kept in step, so new files actually show up on it.
 
-Both are opt-in (`--lyrics`, `--fetch-covers`), free, and need no account:
+**Know your player**
+- **Listening**: what you actually play, from the player's own log. Most played artists and albums, never-played albums, and **free up space** by removing the least listened — with Undo, and sync will not put them back.
+- **Formats**: every format, bit depth and sample rate on the card, with optional limits for what your player cannot play.
 
-- **Lyrics** come from [LRCLIB](https://lrclib.net). Stock Innioasis firmware
-  reads `.lrc` files placed beside the audio, so synced lyrics display on the
-  player. Track duration is sent so a radio edit doesn't match an album cut.
-- **Cover art** comes from the [Cover Art Archive](https://coverartarchive.org)
-  via MusicBrainz, and only for albums that have no art at all. Release
-  *groups* are searched first — a group covers every pressing of an album, so
-  art is present far more often than on one specific edition.
+**Safe by design**
+Nothing is deleted straight away: files go to a hidden undo folder on the player, and **Undo** puts them back. Audio is **never converted or re-encoded** — only tags and cover art are rewritten, and the audio bytes stay identical.
 
-These send artist, album and track names to those services. MusicBrainz asks for
-one request per second, which the client respects.
+## Works with your firmware
 
-## Design
-
-A simple flat pixel style: warm paper with white pixel boxes and ink borders by
-day, a dark version by night (follows macOS, or pick Auto / Day / Night with the
-button in the top bar). The top bar holds the tabs — Sync, Results, Device,
-Dupes (⌘1–⌘4) — and a status bar along the bottom shows the player and any work
-in progress. The Sync tab is three numbered boxes: 1 Player, 2 Music, 3 Copy.
-Everything is built from a small design system in `Sources/Y1SyncAppUI/Theme/`
-(palette tokens, `PixelBox`, `PixelButtonStyle`, `Notice`, `PixelTabBar`, …).
-
-- Text uses the system font; the pixel look comes from the borders and corners.
-  Pixelify Sans (SIL OFL) is bundled in `Resources/Fonts`.
-- Optional UI sounds go in `Resources/Sounds` (mute with the speaker button).
-- No animations; colour is never the only signal (every status line has an icon).
-
-Double-click `check.command` to build the app and run the tests in one go.
-
-## Layout
-
-```
-Sources/Y1SyncCore/    engine — no UI, fully tested
-Sources/y1sync/        CLI
-Sources/Y1SyncAppUI/   SwiftUI views/models (a library, so Xcode Previews can build them)
-Sources/Y1SyncApp/     thin executable that just launches Y1SyncAppUI
-Tests/                 174 tests
-```
-
-Run the tests:
-
-```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
-```
-
-The ID3 rewriting is covered by tests that assert the audio payload survives
-byte-for-byte, since a bug there would silently corrupt a music library.
-
-`DEVELOPER_DIR` is needed because `xcode-select` points at the Command Line
-Tools, which don't ship XCTest.
-
-## Firmware
-
-The Y1 runs different software and the app adapts to it. It looks at the card to tell
-which one (`.rockbox` folder → Rockbox; `.y1_library_cache.json`, `Y1_Themes` or a JJ
-play log → JJ Launcher / InniClassic; otherwise stock Innioasis). You can override the
-guess per player in the Sync tab.
+The Y1 runs different software. Y1 Sync looks at the card to tell which, and adapts (you can override it per player).
 
 | | Stock Innioasis | JJ Launcher / InniClassic | Rockbox |
 |---|---|---|---|
 | Formats scanned | mp3 flac wav ogg opus m4a m4b aac ape wma | same | also wv mpc aiff |
 | Cover size kept | 500 px | 1000 px | 500 px |
-| Own song list to keep current | – | `.y1_library_cache.json` | – |
-| Play log (Listening tab) | may not exist | `.scrobbler.log` | when its scrobbler is on |
+| Player's own song list kept current | – | yes (`.y1_library_cache.json`) | – |
+| Play log for the Listening tab | may not exist | `.scrobbler.log` | when its scrobbler is on |
 
-The stock firmware's exact format list is not documented, so it is treated like the
-launcher's rather than hiding files on a guess. Corrections welcome.
+Tested on **InniClassic**. The stock and Rockbox columns come from their documentation —
+the stock firmware's exact format list is not published, so it is treated like the
+launcher's rather than hiding files on a guess. **Corrections and reports from other
+firmware are very welcome** (see [Contributing](CONTRIBUTING.md)).
+
+## Install
+
+Requires macOS 14 or newer and Xcode (or the Swift 6 toolchain) to build.
+
+```bash
+git clone https://github.com/nerrosha/y1-sync.git
+cd y1-sync
+./build-app.sh
+open "build/Y1 Sync.app"
+```
+
+`build-app.sh` produces the app and the `y1sync` command-line tool in `build/`. The app is
+not notarized, so on first launch macOS may ask you to confirm (right-click → Open).
+
+**The player does not mount until you enable USB storage on the player itself** — this is
+the usual reason nothing shows up.
+
+## Using it
+
+1. Connect the player (USB storage on), open the app, pick your music folder.
+2. **Scan and compare** — see exactly what would change.
+3. **Sync** — or fix things first on the **Device** tab.
+
+| Tab | What it is for |
+|---|---|
+| **Sync** | Choose player and folder, see the plan, copy. |
+| **Results** | Every copied file, with what was fixed; play it straight off the player. |
+| **Device** | Fix (tidy, merges, broken files, formats), Listening, Extras (lyrics, covers, smart playlists). |
+| **Dupes** | Duplicates, with one-click clean-up of the safe ones. |
+
+### Command line
+
+```bash
+y1sync devices                     # connected players
+y1sync plan  ~/Music               # dry run: what would be copied
+y1sync sync  ~/Music               # copy
+y1sync check ~/Music               # broken files, huge covers, tag problems
+y1sync tidy [--apply]              # tidy what is on the player (dry run by default)
+y1sync health [--repair]           # find files on the player that will not play
+y1sync artists | albums            # names spelled twice
+y1sync formats                     # formats on the card, firmware, scan speed
+y1sync listening                   # what you play, from the player's log
+y1sync undo [--apply]              # restore the last cleanup
+```
+
+Run `y1sync help` for all commands and options.
+
+<details>
+<summary><b>How it works, and why</b></summary>
+
+- **Plain files.** The Y1 mounts as USB mass storage, so this is ordinary file access to `/Volumes/<name>` — no drivers.
+- **FAT32.** Names are normalised for FAT (forbidden characters, trailing dots, reserved names) and compared case-insensitively, otherwise every sync would re-copy the whole library.
+- **FLAC and M4A are parsed directly**, because the system tag API does not expose Vorbis comments. Tag edits stream the audio through untouched.
+- **"Already there" is decided by the audio**, not the file size: tags are rewritten on the way across, so a correctly synced file is almost never the same size as its source.
+- **macOS litter.** Writing to FAT creates hidden `._name` files that macOS hides from itself but the player lists. They are found by probing sibling paths.
+- **Broken files** are caught by decoding, not by headers: random bytes contain valid MP3 frame syncs. The ends of FLAC files are checked cheaply from the frame headers.
+- **Scan cache.** Per file, size and modification time decide whether tags and health are read again (stored on your Mac, never on the player).
+- **Online lookups are opt-in**: lyrics from [LRCLIB](https://lrclib.net), covers from the [Cover Art Archive](https://coverartarchive.org). They send artist, album and track names to those services.
+
+</details>
+
+<details>
+<summary><b>For developers</b></summary>
+
+```
+Sources/Y1SyncCore/    engine — no UI, fully tested
+Sources/y1sync/        command-line tool
+Sources/Y1SyncAppUI/   SwiftUI views and models
+Sources/Y1SyncApp/     thin executable that launches the UI
+Tests/                 XCTest
+```
+
+```bash
+swift build
+swift test          # needs full Xcode for XCTest: DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+./check.command     # builds the app + CLI and runs the tests (log in check-log.txt)
+```
+
+No third-party dependencies. Tag rewriting is covered by tests that assert the audio payload survives byte for byte.
+
+</details>
 
 ## License
 
