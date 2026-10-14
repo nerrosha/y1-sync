@@ -103,11 +103,7 @@ struct DuplicatesView: View {
                     .font(.system(size: 13)).foregroundStyle(p.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("\(countLabel(safe.count, "group")) are the same song on the same album. "
-                     + "The best copy stays (lossless first, then larger, then the one in the right folder, "
-                     + "and always one the player can play); the rest go to quarantine and free "
-                     + ByteFormat.string(freed) + "."
-                     + (rest > 0 ? " The other \(rest) are marked “check first” — they are on different albums." : ""))
+                Text(autoCleanText(safe: safe.count, rest: rest, freed: freed))
                     .font(.system(size: 13)).foregroundStyle(p.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
                 Button {
@@ -123,6 +119,15 @@ struct DuplicatesView: View {
                 .disabled(model.isBusy)
             }
         }
+    }
+
+    private func autoCleanText(safe: Int, rest: Int, freed: Int64) -> String {
+        var text = "\(countLabel(safe, "group")) are the same song on the same album. "
+        text += "The best copy stays (lossless first, then larger, then the one in the right folder, "
+        text += "and always one the player can play); the rest go to quarantine and free "
+        text += ByteFormat.string(freed) + "."
+        if rest > 0 { text += " The other \(rest) are marked “check first” — they are on different albums." }
+        return text
     }
 
     // MARK: - Group
