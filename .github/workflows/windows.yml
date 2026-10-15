@@ -13,8 +13,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: compnerd/gha-setup-swift@main
         with:
-          branch: swift-6.0-release
-          tag: 6.0-RELEASE
+          branch: swift-6.2-release
+          tag: 6.2-RELEASE
       - name: Swift version
         run: swift --version
       - name: Build the engine only (the Mac UI cannot build here)
