@@ -50,8 +50,11 @@ jobs:
           Copy-Item "$dir/ffmpeg-$triple.exe" "$dir/ffmpeg.exe"
           Copy-Item "$dir/ffprobe-$triple.exe" "$dir/ffprobe.exe"
           $env:PATH = "C:\Windows\System32;C:\Windows"
-          $answer = ('{"cmd":"ping"}' | & "$dir/y1sync.exe" api) -join "`n"
+          $answer = ('{"cmd":"ping"}' | & "$dir/y1sync.exe" api 2>&1) -join "`n"
+          Write-Host "exit: $LASTEXITCODE"
           Write-Host "answer: $answer"
+          Get-ChildItem $dir | Format-Table Name, Length
+          dumpbin /dependents "$dir/y1sync.exe" 2>&1 | Select-Object -First 30
           if (-not ($answer -match '"ffmpeg"\s*:\s*true')) { throw "the engine did not find ffmpeg next to it" }
           Remove-Item "$dir/y1sync.exe", "$dir/ffmpeg.exe", "$dir/ffprobe.exe"
 
