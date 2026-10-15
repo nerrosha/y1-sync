@@ -1,4 +1,7 @@
 import XCTest
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import Y1SyncCore
 
 final class EnricherTests: XCTestCase {

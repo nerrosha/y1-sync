@@ -1,4 +1,7 @@
 import XCTest
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import Y1SyncCore
 
 /// Serves canned HTTP responses so the decoding and request shape can be
