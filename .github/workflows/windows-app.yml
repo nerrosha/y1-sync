@@ -54,7 +54,8 @@ jobs:
           Write-Host "exit: $LASTEXITCODE"
           Write-Host "answer: $answer"
           Get-ChildItem $dir | Format-Table Name, Length
-          dumpbin /dependents "$dir/y1sync.exe" 2>&1 | Select-Object -First 30
+          pip install pefile -q
+          python -c "import pefile,sys;pe=pefile.PE(sys.argv[1]);print(sorted(d.dll.decode() for d in pe.DIRECTORY_ENTRY_IMPORT))" "$dir/y1sync.exe"
           if (-not ($answer -match '"ffmpeg"\s*:\s*true')) { throw "the engine did not find ffmpeg next to it" }
           Remove-Item "$dir/y1sync.exe", "$dir/ffmpeg.exe", "$dir/ffprobe.exe"
 
