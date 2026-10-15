@@ -1,4 +1,7 @@
 import Foundation
+#if os(Windows)
+import WinSDK
+#endif
 
 /// A removable volume that looks like it could be the player.
 public struct Device: Sendable, Hashable {
@@ -53,6 +56,49 @@ public struct DeviceFinder: Sendable {
     /// cannot identify it definitively — it narrows to candidates and lets the
     /// caller confirm rather than guessing and writing to the wrong disk.
     public func candidates() -> [Device] {
+        #if os(Windows)
+        return windowsCandidates()
+        #else
+        return macCandidates()
+        #endif
+    }
+
+    #if os(Windows)
+    /// Removable drives (USB sticks, SD cards and players that mount as one), plus any
+    /// other non-system drive that already looks like a Y1.
+    func windowsCandidates() -> [Device] {
+        let mask = GetLogicalDrives()
+        var found: [Device] = []
+        for i in 0..<26 where mask & (1 << UInt32(i)) != 0 {
+            let letter = String(UnicodeScalar(UInt8(65 + i)))
+            let root = "\(letter):\\"
+            let kind = root.withCString(encodedAs: UTF16.self) { GetDriveTypeW($0) }
+            let url = URL(fileURLWithPath: root)
+            let fm = FileManager.default
+            let looksLikeY1 = fm.fileExists(atPath: url.appendingPathComponent(".rockbox").path)
+                || fm.fileExists(atPath: url.appendingPathComponent(".y1_library_cache.json").path)
+                || fm.fileExists(atPath: url.appendingPathComponent("Y1_Themes").path)
+            guard kind == 2 || (kind == 3 && letter != "C" && looksLikeY1) else { continue }
+
+            var label = [UInt16](repeating: 0, count: 261)
+            _ = root.withCString(encodedAs: UTF16.self) { r in
+                GetVolumeInformationW(r, &label, DWORD(label.count), nil, nil, nil, nil, 0)
+            }
+            let name = String(decoding: label.prefix { $0 != 0 }, as: UTF16.self)
+            var free = ULARGE_INTEGER(), total = ULARGE_INTEGER(), totalFree = ULARGE_INTEGER()
+            _ = root.withCString(encodedAs: UTF16.self) { r in GetDiskFreeSpaceExW(r, &free, &total, &totalFree) }
+
+            found.append(Device(
+                name: name.isEmpty ? "\(letter):" : name,
+                url: url,
+                totalBytes: Int64(total.QuadPart),
+                freeBytes: Int64(free.QuadPart),
+                hasRockbox: fm.fileExists(atPath: url.appendingPathComponent(".rockbox").path)))
+        }
+        return found
+    }
+    #else
+    func macCandidates() -> [Device] {
         let keys: [URLResourceKey] = [
             .volumeNameKey, .volumeIsRemovableKey, .volumeIsEjectableKey,
             .volumeTotalCapacityKey, .volumeAvailableCapacityKey, .volumeIsInternalKey,
@@ -82,6 +128,7 @@ public struct DeviceFinder: Sendable {
             )
         }
     }
+    #endif
 
     /// Pick a single device, preferring one that has Rockbox installed.
     public func resolve(preferredName: String?) throws -> Device {

@@ -1,8 +1,7 @@
 import Foundation
+#if canImport(AVFoundation)
 import AVFoundation
-import CoreGraphics
-import ImageIO
-import UniformTypeIdentifiers
+#endif
 
 /// Extracts embedded cover art and writes it as `cover.bmp` next to the album.
 ///
@@ -22,35 +21,21 @@ public struct AlbumArtExporter: Sendable {
 
     /// Pull embedded artwork out of an audio file, if it has any.
     public func embeddedArtwork(in url: URL) async -> Data? {
+        #if canImport(AVFoundation)
         let asset = AVURLAsset(url: url)
         guard let items = try? await asset.load(.commonMetadata) else { return nil }
         for item in items where item.commonKey == .commonKeyArtwork {
             if let data = try? await item.load(.dataValue) { return data }
         }
         return nil
+        #else
+        return EmbeddedArtwork.read(from: url) ?? PlatformMedia.embeddedArtwork(in: url)
+        #endif
     }
 
     /// Transcode arbitrary image data to a downscaled BMP.
     public func makeBMP(from data: Data) -> Data? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-
-        // Let ImageIO do the downscale while decoding: far cheaper than
-        // decoding a full-size cover and resampling afterwards.
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxDimension,
-        ]
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-        else { return nil }
-
-        let out = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(
-            out, UTType.bmp.identifier as CFString, 1, nil
-        ) else { return nil }
-        CGImageDestinationAddImage(dest, image, nil)
-        guard CGImageDestinationFinalize(dest) else { return nil }
-        return out as Data
+        ImageTools.thumbnail(data, maxPixel: maxDimension, jpegQuality: nil)
     }
 
     /// Write `cover.bmp` into `albumDirectory` unless one is already there.

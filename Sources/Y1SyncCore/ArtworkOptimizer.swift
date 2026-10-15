@@ -1,7 +1,4 @@
 import Foundation
-import CoreGraphics
-import ImageIO
-import UniformTypeIdentifiers
 
 /// Shrinks oversized embedded cover art on its way to the player.
 ///
@@ -33,10 +30,8 @@ public struct ArtworkOptimizer: Sendable {
 
     /// Pixel dimensions of encoded image data, for reporting.
     public func dimensions(_ data: Data) -> String? {
-        guard let src = CGImageSourceCreateWithData(data as CFData, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
-              let w = props[kCGImagePropertyPixelWidth] as? Int,
-              let h = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
+        let i = ImageTools.info(data)
+        guard let w = i.width, let h = i.height else { return nil }
         return "\(w)x\(h)"
     }
 
@@ -48,32 +43,11 @@ public struct ArtworkOptimizer: Sendable {
     /// Downscale `image` to a JPEG no larger than `maxDimension` on its long
     /// edge. Returns nil when the image is already small enough.
     public func shrink(_ data: Data) -> Data? {
-        guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-
-        if let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
-           let w = props[kCGImagePropertyPixelWidth] as? Int,
-           let h = props[kCGImagePropertyPixelHeight] as? Int,
-           max(w, h) <= maxDimension,
-           CGImageSourceGetType(src) as String? == UTType.jpeg.identifier {
+        let info = ImageTools.info(data)
+        if let w = info.width, let h = info.height, max(w, h) <= maxDimension, info.type == "public.jpeg" {
             return nil   // already small enough, and already JPEG
         }
-
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxDimension,
-        ]
-        guard let thumb = CGImageSourceCreateThumbnailAtIndex(src, 0, options as CFDictionary)
-        else { return nil }
-
-        let out = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(
-            out, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
-        CGImageDestinationAddImage(dest, thumb, [
-            kCGImageDestinationLossyCompressionQuality: quality
-        ] as CFDictionary)
-        guard CGImageDestinationFinalize(dest) else { return nil }
-        return out as Data
+        return ImageTools.thumbnail(data, maxPixel: maxDimension, jpegQuality: quality)
     }
 
     /// Copy `source` to `destination`, shrinking embedded art on the way and

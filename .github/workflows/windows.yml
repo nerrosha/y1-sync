@@ -3,7 +3,7 @@ name: Windows engine
 on:
   push:
     branches: [main]
-    paths: ["Sources/Y1SyncCore/**", "Sources/y1sync/**", "Package.swift", ".github/workflows/windows.yml"]
+    paths: ["Sources/Y1SyncCore/**", "Sources/y1sync/**", "Tests/**", "Package.swift", ".github/workflows/windows.yml"]
   workflow_dispatch:
 
 jobs:
@@ -17,5 +17,7 @@ jobs:
           tag: 6.2-RELEASE
       - name: Swift version
         run: swift --version
-      - name: Build the engine only (the Mac UI cannot build here)
-        run: swift build --target Y1SyncCore
+      - name: Build the engine and the command-line tool
+        run: swift build
+      - name: Test
+        run: swift test

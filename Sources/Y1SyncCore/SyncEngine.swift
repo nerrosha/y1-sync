@@ -253,7 +253,9 @@ public struct SyncEngine: Sendable {
         guard size == total else { throw VerifyError(reason: "size \(size) instead of \(total)") }
         let check = try FileHandle(forReadingFrom: tmp)
         defer { try? check.close() }
+        #if canImport(Darwin)
         _ = fcntl(check.fileDescriptor, F_NOCACHE, 1)
+        #endif
         let src = try FileHandle(forReadingFrom: source)
         defer { try? src.close() }
         let window = 64 * 1024

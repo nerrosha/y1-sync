@@ -1,6 +1,4 @@
 import Foundation
-import CoreGraphics
-import ImageIO
 
 /// One place to read cover art out of a file, whatever the container.
 ///
@@ -23,14 +21,7 @@ public enum EmbeddedArtwork {
 
     /// Pixel size and image type of encoded data, without fully decoding it.
     public static func info(_ data: Data) -> (width: Int?, height: Int?, type: String?) {
-        guard let src = CGImageSourceCreateWithData(data as CFData, nil) else {
-            return (nil, nil, nil)
-        }
-        let type = CGImageSourceGetType(src) as String?
-        guard let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
-        else { return (nil, nil, type) }
-        return (props[kCGImagePropertyPixelWidth] as? Int,
-                props[kCGImagePropertyPixelHeight] as? Int,
-                type)
+        let i = ImageTools.info(data)
+        return (i.width, i.height, i.type)
     }
 }

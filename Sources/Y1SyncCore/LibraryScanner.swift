@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(AVFoundation)
 import AVFoundation
+#endif
 
 /// Walks a folder of music and reads tags.
 ///
@@ -63,8 +65,14 @@ public struct LibraryScanner: Sendable {
             track.bitDepth = info?.bitsPerSample
             if let seconds = info?.duration {
                 track.durationSeconds = seconds
-            } else if let duration = try? await AVURLAsset(url: url).load(.duration), duration.isNumeric {
-                track.durationSeconds = CMTimeGetSeconds(duration)
+            } else {
+                #if canImport(AVFoundation)
+                if let duration = try? await AVURLAsset(url: url).load(.duration), duration.isNumeric {
+                    track.durationSeconds = CMTimeGetSeconds(duration)
+                }
+                #else
+                track.durationSeconds = PlatformMedia.probe(url)?.duration
+                #endif
             }
             return track
         }
@@ -75,6 +83,7 @@ public struct LibraryScanner: Sendable {
             track.codec = track.fileExtension.uppercased()
         }
 
+        #if canImport(AVFoundation)
         let asset = AVURLAsset(url: url)
         guard let items = try? await asset.load(.commonMetadata) else { return track }
 
@@ -145,6 +154,26 @@ public struct LibraryScanner: Sendable {
             track.durationSeconds = CMTimeGetSeconds(d)
         }
         return track
+        #else
+        guard let media = PlatformMedia.probe(url) else { return track }
+        func tag(_ names: String...) -> String? { names.compactMap { media.tags[$0] }.first }
+        track.title = tag("title")
+        track.artist = tag("artist")
+        track.albumArtist = tag("album_artist", "albumartist", "album artist")
+        track.album = tag("album")
+        track.trackNumber = Self.parseLeadingInt(tag("track", "tracknumber"))
+        track.discNumber = Self.parseLeadingInt(tag("disc", "discnumber"))
+        track.year = tag("date", "year", "originaldate").flatMap(Self.parseYear)
+        track.genre = tag("genre")
+        track.bpm = tag("bpm", "tbpm").flatMap(Double.init)
+        track.durationSeconds = media.duration
+        if track.sampleRate == nil { track.sampleRate = media.sampleRate }
+        if track.bitDepth == nil { track.bitDepth = media.bitDepth }
+        if track.codec == nil || track.codec == track.fileExtension.uppercased() {
+            track.codec = media.codec ?? track.codec
+        }
+        return track
+        #endif
     }
 
     /// With a `cache`, files whose size and modification time are unchanged

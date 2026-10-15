@@ -1,6 +1,7 @@
 import Foundation
+#if canImport(AVFoundation)
 import AVFoundation
-import ImageIO
+#endif
 
 /// Something wrong with a file, found before it reaches the player.
 public enum TrackIssue: Sendable, Hashable {
@@ -123,6 +124,7 @@ public struct TrackHealth: Sendable {
         self.minimumDuration = minimumDuration
     }
 
+    #if canImport(AVFoundation)
     /// Decode the first slice of audio. Returns a reason on failure, nil when
     /// the file yields real samples.
     func decodeFailure(_ asset: AVURLAsset, duration: Double? = nil) async -> String? {
@@ -180,6 +182,22 @@ public struct TrackHealth: Sendable {
         }
     }
 
+    #else
+    /// Same checks with ffmpeg: the first seconds, and the end of the file.
+    func decodeFailure(_ url: URL, duration: Double? = nil) -> String? {
+        if let why = PlatformMedia.decodeSlice(url, start: 0, length: 2) { return why }
+        guard checkTail, let duration, duration > 8 else { return nil }
+        if FLAC.isFLAC(url) {
+            guard let reason = FLAC.truncationReason(url) else { return nil }
+            return PlatformMedia.decodeSlice(url, start: duration - 3, length: 3) != nil ? reason : nil
+        }
+        if PlatformMedia.decodeSlice(url, start: duration - 3, length: 3) != nil {
+            return "the end of the file is missing — cut off"
+        }
+        return nil
+    }
+    #endif
+
     public func check(_ track: Track) async -> TrackReport {
         var issues: [TrackIssue] = []
 
@@ -191,6 +209,7 @@ public struct TrackHealth: Sendable {
             return TrackReport(track: track, issues: [.unsupportedByPlayer(why)])
         }
 
+        #if canImport(AVFoundation)
         let asset = AVURLAsset(url: track.sourceURL)
         var durationSeconds: Double?
 
@@ -222,6 +241,26 @@ public struct TrackHealth: Sendable {
             }
         }
 
+        #else
+        var durationSeconds: Double?
+        guard let media = PlatformMedia.probe(track.sourceURL) else {
+            return TrackReport(track: track, issues: [.unreadable(ExternalTool.isAvailable
+                ? "could not be read" : "ffmpeg is not installed")])
+        }
+        if !media.hasAudio { issues.append(.noAudioTrack) }
+        durationSeconds = media.duration
+        if let seconds = media.duration, seconds > 0 {
+            if seconds < minimumDuration { issues.append(.suspiciouslyShort(seconds)) }
+        } else {
+            issues.append(.zeroDuration)
+        }
+        if deepCheck, !issues.contains(where: \.isBlocking) {
+            if let why = decodeFailure(track.sourceURL, duration: durationSeconds) {
+                issues.append(.undecodable(why))
+            }
+        }
+
+        #endif
         if audioOnly { return TrackReport(track: track, issues: issues) }
 
         let art = await artworkIssues(for: track.sourceURL)
@@ -243,12 +282,16 @@ public struct TrackHealth: Sendable {
         var artwork = EmbeddedArtwork.read(from: url)
 
         if artwork == nil {
+            #if canImport(AVFoundation)
             let asset = AVURLAsset(url: url)
             if let items = try? await asset.load(.commonMetadata) {
                 for item in items where item.commonKey == .commonKeyArtwork {
                     if let data = try? await item.load(.dataValue) { artwork = data; break }
                 }
             }
+            #else
+            artwork = PlatformMedia.embeddedArtwork(in: url)
+            #endif
         }
 
         if let data = artwork {
@@ -275,15 +318,8 @@ public struct TrackHealth: Sendable {
     }
 
     func imageInfo(_ data: Data) -> (width: Int?, height: Int?, type: String?) {
-        guard let src = CGImageSourceCreateWithData(data as CFData, nil) else {
-            return (nil, nil, nil)
-        }
-        let type = CGImageSourceGetType(src) as String?
-        guard let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
-        else { return (nil, nil, type) }
-        return (props[kCGImagePropertyPixelWidth] as? Int,
-                props[kCGImagePropertyPixelHeight] as? Int,
-                type)
+        let i = ImageTools.info(data)
+        return (i.width, i.height, i.type)
     }
 
     func shortName(_ uti: String) -> String {
