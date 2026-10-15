@@ -41,23 +41,32 @@ jobs:
           Copy-Item $engine "$dest/y1sync-$triple.exe"
           Get-ChildItem $dest | Format-Table Name, Length
 
-      - name: The engine runs on its own (no Swift on PATH, ffmpeg next to it)
+      - name: Collect the Swift runtime libraries the engine needs
+        shell: pwsh
+        run: |
+          $core = Get-ChildItem "$env:LOCALAPPDATA\Programs\Swift\Runtimes" -Recurse -Filter swiftCore.dll | Select-Object -First 1
+          if (-not $core) { throw "swiftCore.dll not found" }
+          $rt = "windows/src-tauri/runtime"
+          New-Item -ItemType Directory -Force $rt | Out-Null
+          Copy-Item (Join-Path $core.DirectoryName "*.dll") $rt
+          Get-ChildItem $rt | Measure-Object Length -Sum | Format-List Count, Sum
+
+      - name: The engine runs on its own (no Swift on PATH, ffmpeg and runtime next to it)
         shell: pwsh
         run: |
           $triple = "x86_64-pc-windows-msvc"
-          $dir = Join-Path $PWD "windows/src-tauri/binaries"
-          Copy-Item "$dir/y1sync-$triple.exe" "$dir/y1sync.exe"
-          Copy-Item "$dir/ffmpeg-$triple.exe" "$dir/ffmpeg.exe"
-          Copy-Item "$dir/ffprobe-$triple.exe" "$dir/ffprobe.exe"
-          $env:PATH = "C:\Windows\System32;C:\Windows"
+          $bin = Join-Path $PWD "windows/src-tauri/binaries"
+          $dir = Join-Path $PWD "check-engine"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item "$bin/y1sync-$triple.exe" "$dir/y1sync.exe"
+          Copy-Item "$bin/ffmpeg-$triple.exe" "$dir/ffmpeg.exe"
+          Copy-Item "$bin/ffprobe-$triple.exe" "$dir/ffprobe.exe"
+          Copy-Item (Join-Path $PWD "windows/src-tauri/runtime") "$dir/runtime" -Recurse
+          $env:PATH = "C:\Windows\System32;C:\Windows;$dir\runtime"
           $answer = ('{"cmd":"ping"}' | & "$dir/y1sync.exe" api 2>&1) -join "`n"
           Write-Host "exit: $LASTEXITCODE"
           Write-Host "answer: $answer"
-          Get-ChildItem $dir | Format-Table Name, Length
-          pip install pefile -q
-          python -c "import pefile,sys;pe=pefile.PE(sys.argv[1]);print(sorted(d.dll.decode() for d in pe.DIRECTORY_ENTRY_IMPORT))" "$dir/y1sync.exe"
-          if (-not ($answer -match '"ffmpeg"\s*:\s*true')) { throw "the engine did not find ffmpeg next to it" }
-          Remove-Item "$dir/y1sync.exe", "$dir/ffmpeg.exe", "$dir/ffprobe.exe"
+          if (-not ($answer -match '"ffmpeg"\s*:\s*true')) { throw "the engine did not start or did not find ffmpeg" }
 
       - uses: actions/setup-node@v4
         with:
@@ -80,6 +89,7 @@ jobs:
           Copy-Item "windows/src-tauri/binaries/y1sync-$triple.exe"  "$out/y1sync.exe"
           Copy-Item "windows/src-tauri/binaries/ffmpeg-$triple.exe"  "$out/ffmpeg.exe"
           Copy-Item "windows/src-tauri/binaries/ffprobe-$triple.exe" "$out/ffprobe.exe"
+          Copy-Item "windows/src-tauri/runtime" "$out/runtime" -Recurse
           Copy-Item LICENSE "$out/LICENSE.txt"
           Copy-Item windows/FFMPEG-LICENSE.txt "$out/FFMPEG-LICENSE.txt"
           Copy-Item windows/README-portable.txt "$out/README.txt"

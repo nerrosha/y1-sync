@@ -17,7 +17,7 @@ files, tidy names, see what you really listen to and free up space. Audio is nev
 Download from the [latest release](https://github.com/nerrosha/y1-sync/releases):
 
 - **`Y1-Sync-Windows-setup.exe`**: installer (per user, no admin rights).
-- **`Y1-Sync-Windows-portable.zip`**: unzip anywhere and run `Y1 Sync.exe`. Keep the other files
+- **`Y1-Sync-Windows-portable.zip`**: unzip anywhere and run `Y1 Sync.exe`. Keep the other files and the runtime folder
   beside it.
 
 Windows says it does not know the publisher (the app is not code-signed): **More info → Run anyway**.

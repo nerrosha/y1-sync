@@ -48,6 +48,16 @@ async fn api_call(
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     quiet(&mut cmd);
+    // The Swift runtime libraries the engine needs ship in `runtime` next to the app.
+    if let Some(dir) = sibling("y1sync").parent() {
+        let mut paths = vec![dir.join("runtime"), dir.to_path_buf()];
+        if let Some(old) = std::env::var_os("PATH") {
+            paths.extend(std::env::split_paths(&old));
+        }
+        if let Ok(joined) = std::env::join_paths(paths) {
+            cmd.env("PATH", joined);
+        }
+    }
 
     let mut child = cmd
         .spawn()

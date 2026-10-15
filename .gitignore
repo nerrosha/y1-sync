@@ -18,3 +18,4 @@ windows/src-tauri/gen/
 windows/src-tauri/binaries/*
 !windows/src-tauri/binaries/.gitkeep
 windows/src-tauri/icons/
+windows/src-tauri/runtime/
