@@ -1,5 +1,6 @@
 import Foundation
 import Y1SyncCore
+import Y1SyncAPI
 
 // A deliberately dependency-free CLI: it is the verifiable core of the app,
 // and the SwiftUI front-end calls the same Y1SyncCore APIs.
@@ -21,6 +22,7 @@ func printUsage() {
       y1sync artists [--device <name>] [--to <path>]
       y1sync albums [--device <name>] [--to <path>]
       y1sync library [--device <name>] [--to <path>] [--apply]
+      y1sync api                       (JSON commands on stdin/stdout, for the Windows window)
       y1sync listening [--device <name>] [--to <path>]
       y1sync merges --library <folder> [--device <name>] [--to <path>]
       y1sync formats [--device <name>] [--to <path>]
@@ -255,6 +257,9 @@ func printIssues(_ reports: [TrackReport], _ albums: [AlbumReport]) {
 let args = Args(CommandLine.arguments)
 
 switch args.command {
+case "api":
+    await API.serveStdio()
+
 case "devices":
     let found = DeviceFinder().candidates()
     if found.isEmpty {

@@ -150,3 +150,16 @@ extension FileManager {
         #endif
     }
 }
+
+/// What this build needs from the machine it runs on.
+public enum Capabilities {
+    /// True when media files can be read here: always on the Mac, and on other
+    /// systems when ffmpeg and ffprobe are installed next to the program or on PATH.
+    public static var canReadMedia: Bool {
+        #if canImport(AVFoundation)
+        true
+        #else
+        ExternalTool.isAvailable
+        #endif
+    }
+}

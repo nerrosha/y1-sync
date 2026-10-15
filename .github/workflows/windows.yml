@@ -3,7 +3,7 @@ name: Windows engine
 on:
   push:
     branches: [main]
-    paths: ["Sources/Y1SyncCore/**", "Sources/y1sync/**", "Tests/**", "Package.swift", ".github/workflows/windows.yml"]
+    paths: ["Sources/Y1SyncCore/**", "Sources/Y1SyncAPI/**", "Sources/y1sync/**", "windows/scripts/**", "Tests/**", "Package.swift", ".github/workflows/windows.yml"]
   workflow_dispatch:
 
 jobs:
@@ -23,3 +23,6 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+      - name: Smoke test the JSON commands on real files
+        shell: pwsh
+        run: ./windows/scripts/smoke.ps1
