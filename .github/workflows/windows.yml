@@ -1,0 +1,21 @@
+name: Windows engine
+
+on:
+  push:
+    branches: [main]
+    paths: ["Sources/Y1SyncCore/**", "Sources/y1sync/**", "Package.swift", ".github/workflows/windows.yml"]
+  workflow_dispatch:
+
+jobs:
+  core:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.0-release
+          tag: 6.0-RELEASE
+      - name: Swift version
+        run: swift --version
+      - name: Build the engine only (the Mac UI cannot build here)
+        run: swift build --target Y1SyncCore
