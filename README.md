@@ -12,6 +12,7 @@
 <p align="center">
   <a href="https://ko-fi.com/nerrosha"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white"></a>
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-black?style=flat-square">
+  <img alt="Windows 10/11 beta" src="https://img.shields.io/badge/Windows-10%2F11%20beta%20(untested)-0078D4?style=flat-square">
   <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-orange?style=flat-square">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-none-brightgreen?style=flat-square">
@@ -85,6 +86,12 @@ launcher's rather than hiding files on a guess. **Corrections and reports from o
 firmware are very welcome** (see [Contributing](CONTRIBUTING.md)).
 
 ## Install
+
+### Windows (beta, untested)
+
+There is a Windows version with the same features. It is **built and checked on GitHub's servers only, not on a real PC or a real player**, so expect rough edges and please report them. Get `Y1-Sync-Windows-setup.exe` (or the portable zip) from [Releases](https://github.com/nerrosha/y1-sync/releases); details in [windows/README.md](windows/README.md).
+
+### macOS
 
 **Download** the latest `Y1-Sync-<version>-macOS.zip` from [Releases](https://github.com/nerrosha/y1-sync/releases), unzip it and drag **Y1 Sync** to Applications. It runs on macOS 14 or newer, on Apple silicon and Intel.
 

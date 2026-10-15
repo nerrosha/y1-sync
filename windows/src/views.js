@@ -189,7 +189,7 @@ export function dupesView() {
     const on = S.ui.dupeSel.has(g.id);
     return box('', `<div class="row"><label class="check"><input type="checkbox" data-act="dupeToggle" data-arg="${esc(g.id)}"${on ? ' checked' : ''}><b>${esc(g.artist)} — ${esc(g.title)}</b></label>
       <span class="grow"></span>${g.safe ? '' : tag('check first', 'warn')}${tag(`frees ${bytes(g.wasted)}`)}</div>
-      ${g.tracks.map((t) => `<div class="row tight" style="padding-left:26px">${tag(t.keep ? 'keep' : 'extra', t.keep ? 'good' : 'warn')}<span class="mono" style="width:90px">${esc(t.ext)} · ${bytes(t.size)}</span><span class="ellipsis grow" title="${esc(t.path)}">${esc(t.path)}</span><span class="small soft">${esc(t.album)}</span></div>`).join('')}`);
+      ${g.tracks.map((t) => `<div class="row tight" style="padding-left:26px">${tag(t.keep ? 'keep' : 'extra', t.keep ? 'good' : 'warn')}<span class="mono" style="width:120px;white-space:nowrap">${esc(t.ext)} · ${bytes(t.size)}</span><span class="ellipsis grow" title="${esc(t.path)}">${esc(t.path)}</span><span class="small soft">${esc(t.album)}</span></div>`).join('')}`);
   }).join('')}
     <div class="row">${btn(`Remove extra copies in ${S.ui.dupeSel.size} group${S.ui.dupeSel.size === 1 ? '' : 's'}`, 'dupesSelected', { disabled: busy() || !S.ui.dupeSel.size })}
       <span class="soft small">Each removed copy goes to the undo folder on the player.</span></div></div>`;

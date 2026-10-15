@@ -88,7 +88,7 @@ details[open] > summary::before { content: '▾'; }
 details > summary::-webkit-details-marker { display: none; }
 details > summary .notice { flex: 1; }
 .list { display: flex; flex-direction: column; gap: 2px; }
-.list .item { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.item { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
 .listbox { max-height: 220px; overflow: auto; border: 2px solid var(--line); padding: 8px; background: var(--paper); }
 .picker .item { padding: 6px 10px; cursor: pointer; border: 2px solid transparent; display: flex; gap: 8px; align-items: center; }
 .picker .item.sel { background: var(--ink); color: var(--card); }

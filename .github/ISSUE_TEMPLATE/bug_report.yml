@@ -8,10 +8,16 @@ body:
       label: Player firmware
       description: Stock Innioasis, JJ Launcher, InniClassic, Rockbox… and its version. What does the Firmware row on the Sync tab say?
     validations: { required: true }
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where are you running it?
+      options: [macOS, Windows (beta)]
+    validations: { required: true }
   - type: input
     id: macos
     attributes:
-      label: macOS version
+      label: macOS or Windows version
     validations: { required: true }
   - type: textarea
     id: what
