@@ -50,9 +50,9 @@ jobs:
           Copy-Item "$dir/ffmpeg-$triple.exe" "$dir/ffmpeg.exe"
           Copy-Item "$dir/ffprobe-$triple.exe" "$dir/ffprobe.exe"
           $env:PATH = "C:\Windows\System32;C:\Windows"
-          $answer = '{"cmd":"ping"}' | & "$dir/y1sync.exe" api
-          Write-Host $answer
-          if (-not ($answer -match '"ffmpeg":true')) { throw "the engine did not find ffmpeg next to it" }
+          $answer = ('{"cmd":"ping"}' | & "$dir/y1sync.exe" api) -join "`n"
+          Write-Host "answer: $answer"
+          if (-not ($answer -match '"ffmpeg"\s*:\s*true')) { throw "the engine did not find ffmpeg next to it" }
           Remove-Item "$dir/y1sync.exe", "$dir/ffmpeg.exe", "$dir/ffprobe.exe"
 
       - uses: actions/setup-node@v4
