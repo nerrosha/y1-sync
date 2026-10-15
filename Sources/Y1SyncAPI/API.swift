@@ -98,10 +98,23 @@ public final class API: @unchecked Sendable {
     func maxArt(for p: Player) -> Int { settings.load().maxArtDimension ?? p.firmware.maxArtPixels }
 
     func devicesJSON() -> JSON {
-        let list = DeviceFinder().candidates().map { d -> JSON in
+        var entries = DeviceFinder().candidates().map { d in
+            (name: d.name, url: d.url, total: d.totalBytes, free: d.freeBytes)
+        }
+        // A folder the person picked by hand (a player the system does not call
+        // removable, or a plain folder) still counts as their player.
+        if let saved = settings.load().devicePath, !saved.isEmpty,
+           !entries.contains(where: { $0.url.standardizedFileURL.path == URL(fileURLWithPath: saved).standardizedFileURL.path }),
+           FileManager.default.fileExists(atPath: saved) {
+            let url = URL(fileURLWithPath: saved)
+            let free = (try? url.resourceValues(forKeys: [.volumeAvailableCapacityKey]))?
+                .volumeAvailableCapacity.map(Int64.init) ?? 0
+            entries.append((name: url.lastPathComponent, url: url, total: 0, free: free))
+        }
+        let list = entries.map { d -> JSON in
             let detected = Firmware.detect(deviceRoot: d.url)
             let chosen = settings.load().firmwareByPlayer[d.name].flatMap(Firmware.init(rawValue:))
-            return ["name": d.name, "path": d.url.path, "totalBytes": d.totalBytes, "freeBytes": d.freeBytes,
+            return ["name": d.name, "path": d.url.path, "totalBytes": d.total, "freeBytes": d.free,
                     "detectedFirmware": detected.rawValue, "firmware": (chosen ?? detected).rawValue,
                     "firmwareChosen": chosen != nil]
         }

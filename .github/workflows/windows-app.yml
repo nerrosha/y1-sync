@@ -1,0 +1,91 @@
+name: Windows app
+
+# Builds the Windows installer and a portable zip. Not tested on a real Windows
+# PC or a real player: this job only proves that the app builds and that the
+# engine answers; see windows/README.md.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*", "win-*"]
+    branches: [main]
+    paths: ["windows/**", ".github/workflows/windows-app.yml"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.2-release
+          tag: 6.2-RELEASE
+
+      - name: Build the engine (Swift runtime linked in, so nothing else needs installing)
+        run: swift build -c release --product y1sync --static-swift-stdlib
+
+      - name: Get ffmpeg (LGPL build) and stage the helper programs
+        shell: pwsh
+        run: |
+          $triple = "x86_64-pc-windows-msvc"
+          $dest = "windows/src-tauri/binaries"
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Invoke-WebRequest "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-dl
+          $ff = (Get-ChildItem ffmpeg-dl -Directory | Select-Object -First 1).FullName
+          Copy-Item "$ff/bin/ffmpeg.exe"  "$dest/ffmpeg-$triple.exe"
+          Copy-Item "$ff/bin/ffprobe.exe" "$dest/ffprobe-$triple.exe"
+          Copy-Item "$ff/LICENSE.txt" "windows/FFMPEG-LICENSE.txt"
+          $engine = Join-Path (swift build -c release --show-bin-path).Trim() "y1sync.exe"
+          Copy-Item $engine "$dest/y1sync-$triple.exe"
+          Get-ChildItem $dest | Format-Table Name, Length
+
+      - name: The engine runs on its own (no Swift on PATH, ffmpeg next to it)
+        shell: pwsh
+        run: |
+          $triple = "x86_64-pc-windows-msvc"
+          $dir = Join-Path $PWD "windows/src-tauri/binaries"
+          Copy-Item "$dir/y1sync-$triple.exe" "$dir/y1sync.exe"
+          Copy-Item "$dir/ffmpeg-$triple.exe" "$dir/ffmpeg.exe"
+          Copy-Item "$dir/ffprobe-$triple.exe" "$dir/ffprobe.exe"
+          $env:PATH = "C:\Windows\System32;C:\Windows"
+          $answer = '{"cmd":"ping"}' | & "$dir/y1sync.exe" api
+          Write-Host $answer
+          if (-not ($answer -match '"ffmpeg":true')) { throw "the engine did not find ffmpeg next to it" }
+          Remove-Item "$dir/y1sync.exe", "$dir/ffmpeg.exe", "$dir/ffprobe.exe"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build the window
+        working-directory: windows
+        run: |
+          npm install
+          npx tauri icon app-icon.png
+          npx tauri build --bundles nsis
+
+      - name: Portable zip
+        shell: pwsh
+        run: |
+          $triple = "x86_64-pc-windows-msvc"
+          $out = "portable/Y1 Sync"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item "windows/src-tauri/target/release/y1-sync.exe" "$out/Y1 Sync.exe"
+          Copy-Item "windows/src-tauri/binaries/y1sync-$triple.exe"  "$out/y1sync.exe"
+          Copy-Item "windows/src-tauri/binaries/ffmpeg-$triple.exe"  "$out/ffmpeg.exe"
+          Copy-Item "windows/src-tauri/binaries/ffprobe-$triple.exe" "$out/ffprobe.exe"
+          Copy-Item LICENSE "$out/LICENSE.txt"
+          Copy-Item windows/FFMPEG-LICENSE.txt "$out/FFMPEG-LICENSE.txt"
+          Copy-Item windows/README-portable.txt "$out/README.txt"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path "portable/Y1 Sync" -DestinationPath "dist/Y1-Sync-Windows-portable.zip"
+          Copy-Item (Get-ChildItem "windows/src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1) "dist/Y1-Sync-Windows-setup.exe"
+          Get-ChildItem dist | Format-Table Name, Length
+          (Get-FileHash dist/*.exe, dist/*.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" }) | Set-Content dist/SHA256SUMS-windows.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Y1-Sync-Windows
+          path: dist/*

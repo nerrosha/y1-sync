@@ -1,0 +1,13 @@
+{
+  "name": "y1-sync-windows",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Y1 Sync for Windows: the window (Tauri) around the y1sync engine.",
+  "scripts": {
+    "tauri": "tauri",
+    "dev:bridge": "python3 dev/bridge.py 8765"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

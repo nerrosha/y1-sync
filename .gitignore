@@ -10,3 +10,11 @@ Resources/Sounds/*.mp3
 Resources/Sounds/*.wav
 Resources/Sounds/*.aif
 dist/
+
+# Windows app
+windows/node_modules/
+windows/src-tauri/target/
+windows/src-tauri/gen/
+windows/src-tauri/binaries/*
+!windows/src-tauri/binaries/.gitkeep
+windows/src-tauri/icons/
