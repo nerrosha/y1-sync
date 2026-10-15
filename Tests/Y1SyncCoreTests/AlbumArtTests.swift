@@ -1,26 +1,10 @@
 import XCTest
-import CoreGraphics
-import ImageIO
-import UniformTypeIdentifiers
 @testable import Y1SyncCore
 
 final class AlbumArtTests: XCTestCase {
     /// Build a PNG in memory to stand in for embedded cover art.
     private func samplePNG(size: Int) throws -> Data {
-        let cs = CGColorSpaceCreateDeviceRGB()
-        let ctx = try XCTUnwrap(CGContext(
-            data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
-            space: cs, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
-        ctx.setFillColor(CGColor(red: 0.5, green: 0.8, blue: 0.6, alpha: 1))
-        ctx.fill(CGRect(x: 0, y: 0, width: size, height: size))
-        let image = try XCTUnwrap(ctx.makeImage())
-
-        let data = NSMutableData()
-        let dest = try XCTUnwrap(CGImageDestinationCreateWithData(
-            data, UTType.png.identifier as CFString, 1, nil))
-        CGImageDestinationAddImage(dest, image, nil)
-        XCTAssertTrue(CGImageDestinationFinalize(dest))
-        return data as Data
+        try TestImages.make(side: size, format: .png, blocks: 0)
     }
 
     /// Rockbox on the Y1 is built with `EXT "bmp"` and reads uncompressed

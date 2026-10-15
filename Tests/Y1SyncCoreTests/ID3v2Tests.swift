@@ -1,7 +1,4 @@
 import XCTest
-import CoreGraphics
-import ImageIO
-import UniformTypeIdentifiers
 @testable import Y1SyncCore
 
 final class ID3v2Tests: XCTestCase {
@@ -39,23 +36,7 @@ final class ID3v2Tests: XCTestCase {
     }
 
     private func jpeg(size: Int, quality: Double = 0.9) throws -> Data {
-        let cs = CGColorSpaceCreateDeviceRGB()
-        let ctx = try XCTUnwrap(CGContext(
-            data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
-            space: cs, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
-        // Noise, so the encoder cannot trivially compress it to nothing.
-        for i in 0..<40 {
-            ctx.setFillColor(CGColor(red: Double(i % 7) / 7.0, green: 0.4, blue: 0.7, alpha: 1))
-            ctx.fill(CGRect(x: i * 13 % size, y: i * 29 % size, width: size / 4, height: size / 4))
-        }
-        let image = try XCTUnwrap(ctx.makeImage())
-        let data = NSMutableData()
-        let dest = try XCTUnwrap(CGImageDestinationCreateWithData(
-            data, UTType.jpeg.identifier as CFString, 1, nil))
-        CGImageDestinationAddImage(dest, image, [
-            kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
-        XCTAssertTrue(CGImageDestinationFinalize(dest))
-        return data as Data
+        try TestImages.make(side: size, format: .jpeg, blocks: 40, quality: quality)
     }
 
     // MARK: - Parsing
@@ -166,32 +147,16 @@ final class ID3v2Tests: XCTestCase {
 
 final class ArtworkOptimizerTests: XCTestCase {
     private func jpeg(size: Int) throws -> Data {
-        let cs = CGColorSpaceCreateDeviceRGB()
-        let ctx = try XCTUnwrap(CGContext(
-            data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
-            space: cs, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
-        for i in 0..<40 {
-            ctx.setFillColor(CGColor(red: Double(i % 7) / 7.0, green: 0.4, blue: 0.7, alpha: 1))
-            ctx.fill(CGRect(x: i * 13 % size, y: i * 29 % size, width: size / 4, height: size / 4))
-        }
-        let image = try XCTUnwrap(ctx.makeImage())
-        let data = NSMutableData()
-        let dest = try XCTUnwrap(CGImageDestinationCreateWithData(
-            data, UTType.jpeg.identifier as CFString, 1, nil))
-        CGImageDestinationAddImage(dest, image, nil)
-        XCTAssertTrue(CGImageDestinationFinalize(dest))
-        return data as Data
+        try TestImages.make(side: size, format: .jpeg, blocks: 40)
     }
 
     func testShrinksOversizedArtToTheLimit() throws {
         let big = try jpeg(size: 1400)
         let small = try XCTUnwrap(ArtworkOptimizer(maxDimension: 500).shrink(big))
 
-        let src = try XCTUnwrap(CGImageSourceCreateWithData(small as CFData, nil))
-        let props = try XCTUnwrap(
-            CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any])
-        let w = props[kCGImagePropertyPixelWidth] as? Int ?? 0
-        let h = props[kCGImagePropertyPixelHeight] as? Int ?? 0
+        let info = ImageTools.info(small)
+        let w = info.width ?? 0
+        let h = info.height ?? 0
 
         XCTAssertLessThanOrEqual(max(w, h), 500)
         XCTAssertLessThan(small.count, big.count)

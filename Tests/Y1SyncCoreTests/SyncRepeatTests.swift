@@ -1,7 +1,4 @@
 import XCTest
-import CoreGraphics
-import ImageIO
-import UniformTypeIdentifiers
 @testable import Y1SyncCore
 
 /// Regression: after a sync that rewrites tags (oversized cover shrunk, album
@@ -26,18 +23,7 @@ final class SyncRepeatTests: XCTestCase {
     }
 
     private func jpeg(side: Int) throws -> Data {
-        let ctx = try XCTUnwrap(CGContext(
-            data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
-        for i in 0..<60 {
-            ctx.setFillColor(CGColor(red: Double(i % 7) / 7, green: Double(i % 5) / 5, blue: 0.6, alpha: 1))
-            ctx.fill(CGRect(x: i * 17 % side, y: i * 31 % side, width: side / 5, height: side / 5))
-        }
-        let data = NSMutableData()
-        let dest = try XCTUnwrap(CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil))
-        CGImageDestinationAddImage(dest, try XCTUnwrap(ctx.makeImage()), nil)
-        XCTAssertTrue(CGImageDestinationFinalize(dest))
-        return data as Data
+        try TestImages.make(side: side, format: .jpeg, blocks: 60)
     }
 
     /// FLAC with a Vorbis comment and a big cover, followed by fake audio.

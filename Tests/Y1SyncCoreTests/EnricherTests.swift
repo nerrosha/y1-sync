@@ -1,7 +1,4 @@
 import XCTest
-import CoreGraphics
-import ImageIO
-import UniformTypeIdentifiers
 @testable import Y1SyncCore
 
 final class EnricherTests: XCTestCase {
@@ -51,18 +48,7 @@ final class EnricherTests: XCTestCase {
     }
 
     private func jpeg(size: Int = 40) throws -> Data {
-        let cs = CGColorSpaceCreateDeviceRGB()
-        let ctx = try XCTUnwrap(CGContext(
-            data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
-            space: cs, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
-        ctx.setFillColor(CGColor(red: 0.2, green: 0.5, blue: 0.8, alpha: 1))
-        ctx.fill(CGRect(x: 0, y: 0, width: size, height: size))
-        let image = try XCTUnwrap(ctx.makeImage())
-        let data = NSMutableData()
-        let dest = try XCTUnwrap(CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil))
-        CGImageDestinationAddImage(dest, image, nil)
-        XCTAssertTrue(CGImageDestinationFinalize(dest))
-        return data as Data
+        try TestImages.make(side: size, format: .jpeg, blocks: 0)
     }
 
     // MARK: - Local cover preferred over network
