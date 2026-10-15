@@ -172,7 +172,7 @@ extension Enricher {
                 return false
             }
             do {
-                _ = try FileManager.default.replaceItemAt(file, withItemAt: temp)
+                _ = try FileManager.default.swapFile(file, with: temp)
                 return true
             } catch {
                 return false

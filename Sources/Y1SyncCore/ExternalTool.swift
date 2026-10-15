@@ -126,3 +126,27 @@ enum PlatformMedia {
         return r.stdout
     }
 }
+
+extension FileManager {
+    /// Put `replacement` in the place of `original`. `replaceItemAt` is not
+    /// implemented in Foundation on Windows, so there the old file is moved aside
+    /// first and only deleted once the new one is in place.
+    @discardableResult
+    func swapFile(_ original: URL, with replacement: URL) throws -> Bool {
+        #if os(Windows)
+        let aside = original.deletingLastPathComponent()
+            .appendingPathComponent(".y1sync-old-\(UUID().uuidString)")
+        try moveItem(at: original, to: aside)
+        do {
+            try moveItem(at: replacement, to: original)
+        } catch {
+            try? moveItem(at: aside, to: original)   // put the old file back
+            throw error
+        }
+        try? removeItem(at: aside)
+        return true
+        #else
+        return try replaceItemAt(original, withItemAt: replacement) != nil
+        #endif
+    }
+}

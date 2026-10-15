@@ -46,7 +46,7 @@ public enum TagEditor {
             let temp = url.deletingLastPathComponent().appendingPathComponent(".y1sync-tag-\(UUID().uuidString).flac")
             defer { try? FileManager.default.removeItem(at: temp) }
             guard (try? FLAC.rewrite(from: url, to: temp, fields: fields)) == true,
-                  (try? FileManager.default.replaceItemAt(url, withItemAt: temp)) != nil else { return false }
+                  (try? FileManager.default.swapFile(url, with: temp)) == true else { return false }
             return true
         }
         if isMP4(url) { return MP4Tags.write(changes, in: url) }
